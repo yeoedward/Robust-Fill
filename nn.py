@@ -1,7 +1,6 @@
 '''
 TODO:
 - Train it
-- Embedding for characters
 - Beam search
 - DSL
 '''
@@ -17,17 +16,28 @@ MAX_PROGRAM_LENGTH = 10
 class RobustFill(nn.Module):
     def __init__(
             self,
+            num_tokens,
             string_size,
             program_size,
             hidden_size,
             end_of_sequence):
         super().__init__()
+        self.embedding = nn.Embedding(num_tokens, string_size)
         self.input_lstm = nn.LSTM(string_size, hidden_size)
         self.output_lstm = nn.LSTM(string_size, hidden_size)
         self.program_lstm = nn.LSTM(program_size, hidden_size)
         self.end_of_sequence = end_of_sequence
 
     def forward(self, input_sequence, output_sequence):
+        input_sequence = [
+            self.embedding(torch.LongTensor([index]))
+            for index in input_sequence
+        ]
+        output_sequence = [
+            self.embedding(torch.LongTensor([index]))
+            for index in output_sequence
+        ]
+
         hidden = None
         for c in input_sequence:
             _, hidden = self.input_lstm(c.view(1, 1, -1), hidden)
@@ -55,10 +65,16 @@ class RobustFill(nn.Module):
 
 def main():
     torch.manual_seed(1337)
-    rb = RobustFill(3, 3, 3, torch.randn(3))
-    input_sequence = [torch.randn(3) for _ in range(5)]
-    output_sequence = [torch.randn(3) for _ in range(5)]
-    print(rb(input_sequence, output_sequence))
+    robust_fill = RobustFill(
+        num_tokens=3,
+        string_size=3,
+        program_size=3,
+        hidden_size=3,
+        end_of_sequence=torch.randn(3),
+    )
+    input_sequence = [0, 1, 2]
+    output_sequence = [2, 1, 0]
+    print(robust_fill(input_sequence, output_sequence))
 
 
 if __name__ == '__main__':
