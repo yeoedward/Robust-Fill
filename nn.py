@@ -90,9 +90,9 @@ def generate_data(program):
 def main():
     torch.manual_seed(1337)
     random.seed(420)
+    
+    checkpoint_name = './checkpoint.pth'
 
-    num_programs = 10
-    num_examples = 10000
     robust_fill = RobustFill(
         num_tokens=2,
         string_size=2,
@@ -101,23 +101,28 @@ def main():
     )
     optimizer = optim.SGD(robust_fill.parameters(), lr=0.001)
 
-    for _ in range(num_programs):
+    example_idx = 0
+    while True:
+        optimizer.zero_grad()
+
         program = generate_program()
-        for i in range(num_examples):
-            optimizer.zero_grad()
+        input_sequence, output_sequence = generate_data(program)
+        program_sequence = robust_fill(input_sequence, output_sequence)
+        loss = F.nll_loss(
+            torch.cat(program_sequence),
+            torch.LongTensor(program),
+        )
 
-            input_sequence, output_sequence = generate_data(program)
-            program_sequence = robust_fill(input_sequence, output_sequence)
-            loss = F.nll_loss(
-                torch.cat(program_sequence),
-                torch.LongTensor(program),
-            )
+        loss.backward()
+        optimizer.step()
 
-            loss.backward()
-            optimizer.step()
+        if example_idx % 1000 == 0:
+            print('Loss: {}'.format(loss))
+            print('Checkpointing at example {}'.format(example_idx))
+            torch.save(robust_fill.state_dict(), checkpoint_name)
+            print('Done')
 
-            if i % 1000 == 0:
-                print(loss)
+        example_idx += 1
 
 
 if __name__ == '__main__':
