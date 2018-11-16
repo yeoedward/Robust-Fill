@@ -1,10 +1,12 @@
 '''
 TODO:
-- generate training data
 - train it
 - Beam search
 - expand DSL
 '''
+
+
+import random
 
 
 import torch
@@ -71,15 +73,23 @@ class RobustFill(nn.Module):
 
 
 def generate_program():
-    return [0, 2]
+    p = random.randint(0, 1)
+    return [p, 2]
 
 
 def generate_data(program):
-    return [0, 0, 0], [0, 0, 0]
+    sequence_length = 3
+    input_sequence = [random.randint(0, 1) for _ in range(sequence_length)]
+    if program[0] == 0:
+        output_sequence = input_sequence
+    else:
+        output_sequence = input_sequence[::-1]
+    return input_sequence, output_sequence
 
 
 def main():
     torch.manual_seed(1337)
+    random.seed(420)
 
     num_programs = 10
     num_examples = 10000
