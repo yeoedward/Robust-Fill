@@ -1,9 +1,9 @@
 '''
 TODO:
-- DSL
 - generate training data
 - train it
 - Beam search
+- expand DSL
 '''
 
 
@@ -46,15 +46,15 @@ class RobustFill(nn.Module):
         for c in input_sequence:
             _, hidden = self.input_lstm(c.view(1, 1, -1), hidden)
         _, hidden = self.input_lstm(
-                end_of_sequence.view(1, 1, -1),
-                hidden,
+            end_of_sequence.view(1, 1, -1),
+            hidden,
         )
 
         for c in output_sequence:
             _, hidden = self.output_lstm(c.view(1, 1, -1), hidden)
         _, hidden = self.output_lstm(
-                end_of_sequence.view(1, 1, -1),
-                hidden,
+            end_of_sequence.view(1, 1, -1),
+            hidden,
         )
 
         program_sequence = []
@@ -70,9 +70,19 @@ class RobustFill(nn.Module):
         return program_sequence
 
 
+def generate_program():
+    return [0, 2]
+
+
+def generate_data(program):
+    return [0, 0, 0], [0, 0, 0]
+
+
 def main():
     torch.manual_seed(1337)
 
+    num_programs = 10
+    num_examples = 10000
     robust_fill = RobustFill(
         num_tokens=2,
         string_size=2,
@@ -81,23 +91,23 @@ def main():
     )
     optimizer = optim.SGD(robust_fill.parameters(), lr=0.001)
 
-    input_sequence = [0, 0, 0]
-    output_sequence = [0, 0, 0]
+    for _ in range(num_programs):
+        program = generate_program()
+        for i in range(num_examples):
+            optimizer.zero_grad()
 
-    for i in range(10000):
-        optimizer.zero_grad()
+            input_sequence, output_sequence = generate_data(program)
+            program_sequence = robust_fill(input_sequence, output_sequence)
+            loss = F.nll_loss(
+                torch.cat(program_sequence),
+                torch.LongTensor(program),
+            )
 
-        program_sequence = robust_fill(input_sequence, output_sequence)
-        loss = F.nll_loss(
-            torch.cat(program_sequence),
-            torch.LongTensor([0, 2]),
-        )
+            loss.backward()
+            optimizer.step()
 
-        loss.backward()
-        optimizer.step()
-
-        if i % 1000 == 0:
-            print(loss)
+            if i % 1000 == 0:
+                print(loss)
 
 
 if __name__ == '__main__':
