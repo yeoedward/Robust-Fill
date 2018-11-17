@@ -88,7 +88,12 @@ def generate_program():
 
 
 def generate_data(program):
-    return program, program
+    input_sequence = [random.randint(0, 1)]
+
+    if program[0] == 0:
+        return input_sequence, input_sequence
+
+    return input_sequence, input_sequence * 2
 
 
 def main():
@@ -121,7 +126,7 @@ def main():
         loss.backward()
         optimizer.step()
 
-        if example_idx % 1000 == 0:
+        if example_idx % 100 == 0:
             print('Loss: {}'.format(loss))
             print(input_sequence)
             print(output_sequence)
