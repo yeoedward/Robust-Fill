@@ -1,13 +1,13 @@
 '''
 TODO:
-- train it
+- train it!!!
 - Beam search
 - expand DSL
 '''
 
 
+import pprint as pp
 import random
-
 
 import torch
 import torch.nn as nn
@@ -18,86 +18,91 @@ import torch.optim as optim
 class RobustFill(nn.Module):
     def __init__(
             self,
-            num_tokens,
             string_size,
+            hidden_size,
             program_size,
+            num_lstm_layers,
             program_length):
         super().__init__()
 
-        # Add 1 to num_tokens for end-of-sequence token
-        self.embedding = nn.Embedding(num_tokens + 1, string_size)
-        self.end_of_sequence_index = torch.LongTensor([num_tokens])
-
-        self.input_lstm = nn.LSTM(string_size, program_size)
-        self.output_lstm = nn.LSTM(string_size, program_size)
-        self.program_lstm = nn.LSTM(program_size, program_size)
+        self.string_size = string_size
+        self.num_lstm_layers = num_lstm_layers
         self.program_length = program_length
 
+        self.input_lstm = nn.LSTM(
+            input_size=string_size,
+            hidden_size=hidden_size,
+            num_layers=num_lstm_layers,
+        )
+        self.output_lstm = nn.LSTM(
+            input_size=string_size,
+            hidden_size=hidden_size,
+            num_layers=num_lstm_layers,
+        )
+        self.program_lstm = nn.LSTM(
+            input_size=hidden_size,
+            hidden_size=hidden_size,
+            num_layers=num_lstm_layers,
+        )
+        self.linear = nn.Linear(hidden_size, program_size)
+
+    def _one_hot(self, index):
+        return (
+            torch.zeros(1, self.string_size)
+            .scatter_(1, torch.LongTensor([[index]]), 1)
+        )
+
     def forward(self, input_sequence, output_sequence):
-        end_of_sequence = self.embedding(self.end_of_sequence_index)
         input_sequence = [
-            self.embedding(torch.LongTensor([index]))
+            self._one_hot(index)
             for index in input_sequence
         ]
         output_sequence = [
-            self.embedding(torch.LongTensor([index]))
+            self._one_hot(index)
             for index in output_sequence
         ]
 
         hidden = None
         for c in input_sequence:
             _, hidden = self.input_lstm(c.view(1, 1, -1), hidden)
-        _, hidden = self.input_lstm(
-            end_of_sequence.view(1, 1, -1),
-            hidden,
-        )
 
         for c in output_sequence:
             _, hidden = self.output_lstm(c.view(1, 1, -1), hidden)
-        _, hidden = self.output_lstm(
-            end_of_sequence.view(1, 1, -1),
-            hidden,
-        )
 
         program_sequence = []
+        previous_hidden = hidden[0][-1, :, :]
         for _ in range(self.program_length):
-            # Should the first input be hidden?
-            _, hidden = self.program_lstm(hidden[0].view(1, 1, -1), hidden)
-            program_embedding = F.log_softmax(
-                torch.squeeze(hidden[0], dim=1),
-                dim=1,
+            _, hidden = self.program_lstm(
+                previous_hidden.view(1, 1, -1),
+                hidden,
             )
-            program_sequence.append(program_embedding)
+            program_embedding = self.linear(hidden[0][-1, :, :])
+            program_sequence.append(torch.squeeze(program_embedding, dim=1))
 
         return program_sequence
 
 
 def generate_program():
     p = random.randint(0, 1)
-    return [p, 2]
+    return [p]
 
 
 def generate_data(program):
-    sequence_length = 3
-    input_sequence = [random.randint(0, 1) for _ in range(sequence_length)]
-    if program[0] == 0:
-        output_sequence = input_sequence
-    else:
-        output_sequence = input_sequence[::-1]
-    return input_sequence, output_sequence
+    return program, program
 
 
 def main():
     torch.manual_seed(1337)
     random.seed(420)
-    
+
     checkpoint_name = './checkpoint.pth'
 
     robust_fill = RobustFill(
-        num_tokens=2,
         string_size=2,
-        program_size=3,
-        program_length=2,
+        hidden_size=8,
+        program_size=2,
+        num_lstm_layers=1,
+        program_length=1,
     )
     optimizer = optim.SGD(robust_fill.parameters(), lr=0.001)
 
@@ -109,7 +114,7 @@ def main():
         input_sequence, output_sequence = generate_data(program)
         program_sequence = robust_fill(input_sequence, output_sequence)
         loss = F.nll_loss(
-            torch.cat(program_sequence),
+            F.log_softmax(torch.cat(program_sequence), dim=1),
             torch.LongTensor(program),
         )
 
@@ -118,6 +123,13 @@ def main():
 
         if example_idx % 1000 == 0:
             print('Loss: {}'.format(loss))
+            print(input_sequence)
+            print(output_sequence)
+            print(program)
+            pp.pprint([
+                F.softmax(p, dim=1)
+                for p in program_sequence
+            ])
             print('Checkpointing at example {}'.format(example_idx))
             torch.save(robust_fill.state_dict(), checkpoint_name)
             print('Done')
