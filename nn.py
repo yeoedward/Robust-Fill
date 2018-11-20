@@ -1,11 +1,3 @@
-'''
-TODO:
-- train it!!!
-- Beam search
-- expand DSL
-'''
-
-
 import pprint as pp
 import random
 
@@ -93,7 +85,10 @@ def generate_data(program):
     if program[0] == 0:
         return input_sequence, input_sequence
 
-    return input_sequence, input_sequence * 2
+    if program[0] == 1:
+        return input_sequence, input_sequence * 2
+
+    return None
 
 
 def main():
