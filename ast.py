@@ -7,14 +7,14 @@ TODO:
 
 
 from enum import Enum
-from string import ascii_lowercase, ascii_uppercase, digits, punctuation
+from string import ascii_letters, digits, punctuation
 
 
 # Inclusive-inclusive interval
 POSITION = [-100, 100]
 # Why is -1 missing?
 INDEX = [-5, -4, -3, -2, 1, 2, 3, 4, 5]
-CHARACTER = ''.join([ascii_lowercase, ascii_uppercase, digits, punctuation])
+CHARACTER = ''.join([ascii_letters, digits, punctuation])
 # Should there be a space here?
 DELIMITER = '&,.?!@()[]%{}/:;$#"\''
 
