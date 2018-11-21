@@ -1,4 +1,6 @@
 from string import ascii_letters, ascii_lowercase, ascii_uppercase, digits
+import re
+
 import ast
 
 
@@ -29,7 +31,17 @@ def evaluate(exp, value):
         raise NotImplementedError
 
     if isinstance(exp, ast.GetToken):
-        raise NotImplementedError
+        tokens = re.split('[^a-zA-Z0-9]', value)
+
+        stride = 1 if exp.index > 0 else -1
+        num_matches = 0
+        for t in tokens[::stride]:
+            if match_type(exp.type_, t):
+                num_matches += 1
+                if num_matches == abs(exp.index):
+                    return t
+
+        raise IndexError
 
     if isinstance(exp, ast.ToCase):
         if exp.case == ast.Case.PROPER:
@@ -44,10 +56,10 @@ def evaluate(exp, value):
         raise ValueError('Invalid case: {}'.format(exp))
 
     if isinstance(exp, ast.Replace):
-        raise NotImplementedError
+        return value.replace(exp.delim1, exp.delim2)
 
     if isinstance(exp, ast.Trim):
-        raise NotImplementedError
+        return value.strip()
 
     if isinstance(exp, ast.GetUpto):
         raise NotImplementedError
@@ -64,7 +76,7 @@ def evaluate(exp, value):
     raise ValueError('Unsupported operator: {}'.format(exp))
 
 
-def match(type_, value):
+def match_type(type_, value):
     if value == '':
         raise ValueError('Non-empty value required')
 

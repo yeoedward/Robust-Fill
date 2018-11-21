@@ -7,16 +7,15 @@ TODO:
 
 
 from enum import Enum
-from string import ascii_letters, digits, punctuation
+from string import ascii_letters, digits, punctuation, whitespace
 
 
 # Inclusive-inclusive interval
 POSITION = [-100, 100]
-# Why is -1 missing?
-INDEX = [-5, -4, -3, -2, 1, 2, 3, 4, 5]
+# 0 is intentionally missing
+INDEX = [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5]
 CHARACTER = ''.join([ascii_letters, digits, punctuation])
-# Should there be a space here?
-DELIMITER = '&,.?!@()[]%{}/:;$#"\''
+DELIMITER = punctuation + whitespace
 
 
 class Program(object):
