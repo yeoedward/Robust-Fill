@@ -6,27 +6,25 @@ TODO:
 '''
 
 
-from abc import ABC, abstractmethod
+from enum import Enum
+from string import ascii_lowercase, ascii_uppercase, digits, punctuation
 
 
-class DSL(ABC):
-    @abstractmethod
-    def eval(v):
-        raise NotImplementedError
+# Inclusive-inclusive interval
+POSITION = [-100, 100]
+# Why is -1 missing?
+INDEX = [-5, -4, -3, -2, 1, 2, 3, 4, 5]
+CHARACTER = ''.join([ascii_lowercase, ascii_uppercase, digits, punctuation])
+# Should there be a space here?
+DELIMITER = '&,.?!@()[]%{}/:;$#"\''
 
 
-class Program(DSL):
+class Program(object):
     def __init__(self, *args):
         self.expressions = args
 
-    def eval(self, v):
-        return ''.join([
-            e.eval(v)
-            for e in self.expressions
-        ])
 
-
-class Expression(DSL):
+class Expression(object):
     pass
 
 
@@ -51,18 +49,14 @@ class ApplySubstring(Nesting):
 
 
 class ConstStr(Expression):
-    pass
+    def __init__(self, char):
+        self.char = char
 
 
 class SubStr(Substring):
     def __init__(self, pos1, pos2):
         self.pos1 = pos1
         self.pos2 = pos2
-
-    def eval(self, v):
-        p1 = self.pos1 if self.pos1 > 0 else len(v) + self.pos1
-        p2 = self.pos2 if self.pos2 > 0 else len(v) + self.pos2
-        return v[p1-1:p2]
 
 
 class GetSpan(Substring):
@@ -74,34 +68,22 @@ class GetSpan(Substring):
         self.index2 = index2
         self.bound2 = bound2
 
-    def eval(self, v):
-        raise NotImplementedError
-
 
 class GetToken(Nesting):
     def __init__(self, type_, index):
         self.type_ = type_
         self.index = index
 
-    def eval(self, v):
-        raise NotImplementedError
-
 
 class ToCase(Nesting):
     def __init__(self, case):
         self.case = case
-
-    def eval(self, v):
-        raise NotImplementedError
 
 
 class Replace(Nesting):
     def __init__(self, delim1, delim2):
         self.delim1 = delim1
         self.delim2 = delim2
-
-    def eval(self, v):
-        raise NotImplementedError
 
 
 class Trim(Nesting):
@@ -127,3 +109,25 @@ class GetFirst(Nesting):
 class GetAll(Nesting):
     def __init__(self, type_):
         self.type_ = type_
+
+
+class Type(Enum):
+    NUMBER = 1
+    WORD = 2
+    ALPHANUM = 3
+    ALL_CAPS = 4
+    PROP_CASE = 5
+    LOWER = 6
+    DIGIT = 7
+    CHAR = 8
+
+
+class Case(Enum):
+    PROPER = 1
+    ALL_CAPS = 2
+    LOWER = 3
+
+
+class Boundary(Enum):
+    START = 1
+    END = 2
