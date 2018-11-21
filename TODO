@@ -1,0 +1,13 @@
+Finish evaluate()
+Generation of programs
+Generation of examples given program
+Embedding of characters and programs
+Train using subset of DSL
+Add neural net support for multiple I/O examples
+Train using subset of DSL
+GPU!
+Add attention
+Successfully train to low loss
+Beam search
+Visualize neural net
+Use SNA to characterize networks?
