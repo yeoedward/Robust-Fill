@@ -29,7 +29,7 @@ class TestEvaluate(TestCase):
             evaluate(ast.GetToken(ast.Type.NUMBER, 2), '123 abc 456'),
         )
         self.assertEqual(
-            '456',
+            '999',
             evaluate(ast.GetToken(ast.Type.NUMBER, 2), '123 abc999 456'),
         )
 
@@ -40,7 +40,7 @@ class TestEvaluate(TestCase):
             pass
 
         self.assertEqual(
-            'hi',
+            'abc',
             evaluate(ast.GetToken(ast.Type.WORD, 1), '123 abc999 456.hi'),
         )
         self.assertEqual(
@@ -52,28 +52,28 @@ class TestEvaluate(TestCase):
             evaluate(ast.GetToken(ast.Type.ALPHANUM, -4), '123 abc999 456.hi'),
         )
         self.assertEqual(
-            'GHI',
+            'EF',
             evaluate(ast.GetToken(ast.Type.ALL_CAPS, 2), 'ABC?dEF@GHI'),
         )
         self.assertEqual(
-            'Ghi',
+            'B',
             evaluate(ast.GetToken(ast.Type.PROP_CASE, 2), 'ABC?Def@Ghi'),
         )
         self.assertEqual(
-            'ghi',
+            'ef',
             evaluate(ast.GetToken(ast.Type.LOWER, 1), 'ABC?Def ghi'),
         )
         self.assertEqual(
             '9',
-            evaluate(ast.GetToken(ast.Type.DIGIT, 1), '123 9'),
+            evaluate(ast.GetToken(ast.Type.DIGIT, 4), '123 9'),
         )
         self.assertEqual(
             'c',
-            evaluate(ast.GetToken(ast.Type.CHAR, 1), 'abc999 c'),
+            evaluate(ast.GetToken(ast.Type.CHAR, 3), 'abc999 c'),
         )
 
         try:
-            evaluate(ast.GetToken(ast.Type.CHAR, -2), 'abc999 c'),
+            evaluate(ast.GetToken(ast.Type.CHAR, -5), 'abc999 c'),
             self.fail()
         except IndexError:
             pass
@@ -106,4 +106,49 @@ class TestEvaluate(TestCase):
         self.assertEqual(
             'trimmed',
             evaluate(ast.Trim(), ' \ttrimmed\n\r'),
+        )
+
+    def test_GetFirst(self):
+        self.assertEqual(
+            'a1b393',
+            evaluate(ast.GetFirst(ast.Type.ALPHANUM, 3), 'a1.b3? 93 !@4'),
+        )
+
+        self.assertEqual(
+            '13',
+            evaluate(ast.GetFirst(ast.Type.NUMBER, 2), 'a1.b3? 93 !@4'),
+        )
+
+        try:
+            evaluate(ast.GetFirst(ast.Type.NUMBER, 5), 'a1.b3? 93 !@4'),
+            self.fail()
+        except IndexError:
+            pass
+
+        try:
+            evaluate(ast.GetFirst(ast.Type.NUMBER, -1), 'a1.b3? 93 !@4'),
+            self.fail()
+        except IndexError:
+            pass
+
+    def test_GetAll(self):
+        self.assertEqual(
+            'a1b3934',
+            evaluate(ast.GetAll(ast.Type.ALPHANUM), 'a1.b3? 93 !@4'),
+        )
+        self.assertEqual(
+            'ab',
+            evaluate(ast.GetAll(ast.Type.LOWER), 'a1.b3? 93 !@4'),
+        )
+        self.assertEqual(
+            '13934',
+            evaluate(ast.GetAll(ast.Type.NUMBER), 'a1.b3? 93 !@4'),
+        )
+        self.assertEqual(
+            '13934',
+            evaluate(ast.GetAll(ast.Type.DIGIT), 'a1.b3? 93 !@4'),
+        )
+        self.assertEqual(
+            'AbcDefGhi',
+            evaluate(ast.GetAll(ast.Type.PROP_CASE), 'AbcDef#!asd Ghi'),
         )

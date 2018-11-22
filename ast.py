@@ -1,11 +1,3 @@
-'''
-TODO:
-    Eval
-    Checking
-    Unit tests
-'''
-
-
 from enum import Enum
 from string import ascii_letters, digits, punctuation, whitespace
 

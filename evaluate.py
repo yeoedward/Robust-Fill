@@ -1,4 +1,3 @@
-from string import ascii_letters, ascii_lowercase, ascii_uppercase, digits
 import re
 
 import ast
@@ -31,17 +30,12 @@ def evaluate(exp, value):
         raise NotImplementedError
 
     if isinstance(exp, ast.GetToken):
-        tokens = re.split('[^a-zA-Z0-9]', value)
-
-        stride = 1 if exp.index > 0 else -1
-        num_matches = 0
-        for t in tokens[::stride]:
-            if match_type(exp.type_, t):
-                num_matches += 1
-                if num_matches == abs(exp.index):
-                    return t
-
-        raise IndexError
+        matches = match_value(exp.type_, value)
+        i = exp.index
+        if exp.index > 0:
+            # Positive indices start at 1
+            i -= 1
+        return matches[i]
 
     if isinstance(exp, ast.ToCase):
         if exp.case == ast.Case.PROPER:
@@ -68,42 +62,51 @@ def evaluate(exp, value):
         raise NotImplementedError
 
     if isinstance(exp, ast.GetFirst):
-        raise NotImplementedError
+        matches = match_value(exp.type_, value)
+
+        if exp.index < 0 or exp.index > len(matches):
+            raise IndexError
+
+        return ''.join(matches[:exp.index])
 
     if isinstance(exp, ast.GetAll):
-        raise NotImplementedError
+        return ''.join(match_value(exp.type_, value))
 
     raise ValueError('Unsupported operator: {}'.format(exp))
 
 
-def match_type(type_, value):
-    if value == '':
-        raise ValueError('Non-empty value required')
+def match_value(type_, value):
+    regex = regex_for_type(type_)
+    return [
+        t
+        for t in re.findall(regex, value)
+        if t != ''
+    ]
 
+
+def regex_for_type(type_):
     if type_ == ast.Type.NUMBER:
-        return all([v in digits for v in value])
+        return '[0-9]*'
 
     if type_ == ast.Type.WORD:
-        return all([v in ascii_letters for v in value])
+        return '[A-Za-z]*'
 
     if type_ == ast.Type.ALPHANUM:
-        alpha_num = ascii_letters + digits
-        return all([v in alpha_num for v in value])
+        return '[A-Za-z0-9]*'
 
     if type_ == ast.Type.ALL_CAPS:
-        return all([v in ascii_uppercase for v in value])
+        return '[A-Z]*'
 
     if type_ == ast.Type.PROP_CASE:
-        return (value[0] in ascii_uppercase
-                and all([v in ascii_lowercase for v in value[1:]]))
+        return '[A-Z][a-z]*'
 
     if type_ == ast.Type.LOWER:
-        return all([v in ascii_lowercase for v in value])
+        return '[a-z]*'
 
     if type_ == ast.Type.DIGIT:
-        return len(value) == 1 and value in digits
+        return '[0-9]'
 
     if type_ == ast.Type.CHAR:
-        return len(value) == 1 and value in ascii_letters
+        return '[A-Za-z]'
 
     raise ValueError('Unsupported type: {}'.format(type_))
