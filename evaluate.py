@@ -1,30 +1,30 @@
 import re
 
-import ast
+import operators as op
 
 
 def evaluate(exp, value):
-    if isinstance(exp, ast.Program):
+    if isinstance(exp, op.Program):
         return ''.join([
             evaluate(e, value)
             for e in exp.expressions
         ])
 
-    if isinstance(exp, ast.ApplyNesting):
+    if isinstance(exp, op.ApplyNesting):
         return evaluate(exp.nesting1, evaluate(exp.nesting2, value))
 
-    if isinstance(exp, ast.ApplySubstring):
+    if isinstance(exp, op.ApplySubstring):
         return evaluate(exp.nesting, evaluate(exp.substring, value))
 
-    if isinstance(exp, ast.ConstStr):
+    if isinstance(exp, op.ConstStr):
         return exp.char
 
-    if isinstance(exp, ast.SubStr):
+    if isinstance(exp, op.SubStr):
         p1 = substr_index(exp.pos1, value)
         p2 = substr_index(exp.pos2, value)
         return value[p1:p2+1]
 
-    if isinstance(exp, ast.GetSpan):
+    if isinstance(exp, op.GetSpan):
         p1 = span_index(
             dsl_regex=exp.dsl_regex1,
             index=exp.index1,
@@ -39,7 +39,7 @@ def evaluate(exp, value):
         )
         return value[p1:p2]
 
-    if isinstance(exp, ast.GetToken):
+    if isinstance(exp, op.GetToken):
         matches = match_type(exp.type_, value)
         i = exp.index
         if exp.index > 0:
@@ -47,25 +47,25 @@ def evaluate(exp, value):
             i -= 1
         return matches[i]
 
-    if isinstance(exp, ast.ToCase):
-        if exp.case == ast.Case.PROPER:
+    if isinstance(exp, op.ToCase):
+        if exp.case == op.Case.PROPER:
             return value.capitalize()
 
-        if exp.case == ast.Case.ALL_CAPS:
+        if exp.case == op.Case.ALL_CAPS:
             return value.upper()
 
-        if exp.case == ast.Case.LOWER:
+        if exp.case == op.Case.LOWER:
             return value.lower()
 
         raise ValueError('Invalid case: {}'.format(exp))
 
-    if isinstance(exp, ast.Replace):
+    if isinstance(exp, op.Replace):
         return value.replace(exp.delim1, exp.delim2)
 
-    if isinstance(exp, ast.Trim):
+    if isinstance(exp, op.Trim):
         return value.strip()
 
-    if isinstance(exp, ast.GetUpto):
+    if isinstance(exp, op.GetUpto):
         matches = match_dsl_regex(exp.dsl_regex, value)
 
         if len(matches) == 0:
@@ -74,7 +74,7 @@ def evaluate(exp, value):
         first = matches[0]
         return value[:first[1]]
 
-    if isinstance(exp, ast.GetFrom):
+    if isinstance(exp, op.GetFrom):
         matches = match_dsl_regex(exp.dsl_regex, value)
 
         if len(matches) == 0:
@@ -83,7 +83,7 @@ def evaluate(exp, value):
         first = matches[0]
         return value[first[0]:]
 
-    if isinstance(exp, ast.GetFirst):
+    if isinstance(exp, op.GetFirst):
         matches = match_type(exp.type_, value)
 
         if exp.index < 0:
@@ -91,7 +91,7 @@ def evaluate(exp, value):
 
         return ''.join(matches[:exp.index])
 
-    if isinstance(exp, ast.GetAll):
+    if isinstance(exp, op.GetAll):
         return ''.join(match_type(exp.type_, value))
 
     raise ValueError('Unsupported operator: {}'.format(exp))
@@ -125,14 +125,14 @@ def span_index(dsl_regex, index, bound, value):
         return 0
 
     span = matches[index]
-    return span[0] if bound == ast.Boundary.START else span[1]
+    return span[0] if bound == op.Boundary.START else span[1]
 
 
 def match_dsl_regex(dsl_regex, value):
-    if isinstance(dsl_regex, ast.Type):
+    if isinstance(dsl_regex, op.Type):
         regex = regex_for_type(dsl_regex)
     else:
-        assert len(dsl_regex) == 1 and dsl_regex in ast.DELIMITER
+        assert len(dsl_regex) == 1 and dsl_regex in op.DELIMITER
         regex = '[' + re.escape(dsl_regex) + ']'
 
     return [
@@ -147,28 +147,28 @@ def match_type(type_, value):
 
 
 def regex_for_type(type_):
-    if type_ == ast.Type.NUMBER:
+    if type_ == op.Type.NUMBER:
         return '[0-9]+'
 
-    if type_ == ast.Type.WORD:
+    if type_ == op.Type.WORD:
         return '[A-Za-z]+'
 
-    if type_ == ast.Type.ALPHANUM:
+    if type_ == op.Type.ALPHANUM:
         return '[A-Za-z0-9]+'
 
-    if type_ == ast.Type.ALL_CAPS:
+    if type_ == op.Type.ALL_CAPS:
         return '[A-Z]+'
 
-    if type_ == ast.Type.PROP_CASE:
+    if type_ == op.Type.PROP_CASE:
         return '[A-Z][a-z]*'
 
-    if type_ == ast.Type.LOWER:
+    if type_ == op.Type.LOWER:
         return '[a-z]+'
 
-    if type_ == ast.Type.DIGIT:
+    if type_ == op.Type.DIGIT:
         return '[0-9]'
 
-    if type_ == ast.Type.CHAR:
+    if type_ == op.Type.CHAR:
         return '[A-Za-z]'
 
     raise ValueError('Unsupported type: {}'.format(type_))

@@ -1,33 +1,33 @@
 from unittest import TestCase
 
-import ast
+import operators as op
 from evaluate import evaluate
 
 
 class TestEvaluate(TestCase):
     def test_ConstStr(self):
-        self.assertEqual('c', evaluate(ast.ConstStr('c'), 'ignored'))
+        self.assertEqual('c', evaluate(op.ConstStr('c'), 'ignored'))
 
     def test_SubStr(self):
-        self.assertEqual('123', evaluate(ast.SubStr(1, 3), '1234'))
-        self.assertEqual('4', evaluate(ast.SubStr(0, 4), '1234'))
-        self.assertEqual('234', evaluate(ast.SubStr(-2, 4), '1234'))
-        self.assertEqual('234', evaluate(ast.SubStr(2, 5), '1234'))
-        self.assertEqual('123', evaluate(ast.SubStr(-5, 3), '1234'))
-        self.assertEqual('2', evaluate(ast.SubStr(2, 2), '1234'))
-        self.assertEqual('', evaluate(ast.SubStr(3, 2), '1234'))
+        self.assertEqual('123', evaluate(op.SubStr(1, 3), '1234'))
+        self.assertEqual('4', evaluate(op.SubStr(0, 4), '1234'))
+        self.assertEqual('234', evaluate(op.SubStr(-2, 4), '1234'))
+        self.assertEqual('234', evaluate(op.SubStr(2, 5), '1234'))
+        self.assertEqual('123', evaluate(op.SubStr(-5, 3), '1234'))
+        self.assertEqual('2', evaluate(op.SubStr(2, 2), '1234'))
+        self.assertEqual('', evaluate(op.SubStr(3, 2), '1234'))
 
     def test_GetSpan(self):
         self.assertEqual(
             '123 abcd',
             evaluate(
-                ast.GetSpan(
-                    dsl_regex1=ast.Type.NUMBER,
+                op.GetSpan(
+                    dsl_regex1=op.Type.NUMBER,
                     index1=1,
-                    bound1=ast.Boundary.START,
+                    bound1=op.Boundary.START,
                     dsl_regex2=' ',
                     index2=2,
-                    bound2=ast.Boundary.START,
+                    bound2=op.Boundary.START,
                 ),
                 '123 abcd 456',
             ),
@@ -35,13 +35,13 @@ class TestEvaluate(TestCase):
         self.assertEqual(
             ' abcd',
             evaluate(
-                ast.GetSpan(
-                    dsl_regex1=ast.Type.NUMBER,
+                op.GetSpan(
+                    dsl_regex1=op.Type.NUMBER,
                     index1=1,
-                    bound1=ast.Boundary.END,
+                    bound1=op.Boundary.END,
                     dsl_regex2=' ',
                     index2=2,
-                    bound2=ast.Boundary.START,
+                    bound2=op.Boundary.START,
                 ),
                 '123 abcd 456',
             ),
@@ -49,13 +49,13 @@ class TestEvaluate(TestCase):
         self.assertEqual(
             '123 abcd ',
             evaluate(
-                ast.GetSpan(
-                    dsl_regex1=ast.Type.NUMBER,
+                op.GetSpan(
+                    dsl_regex1=op.Type.NUMBER,
                     index1=1,
-                    bound1=ast.Boundary.START,
+                    bound1=op.Boundary.START,
                     dsl_regex2=' ',
                     index2=2,
-                    bound2=ast.Boundary.END,
+                    bound2=op.Boundary.END,
                 ),
                 '123 abcd 456',
             ),
@@ -63,13 +63,13 @@ class TestEvaluate(TestCase):
         self.assertEqual(
             ' abcd ',
             evaluate(
-                ast.GetSpan(
-                    dsl_regex1=ast.Type.NUMBER,
+                op.GetSpan(
+                    dsl_regex1=op.Type.NUMBER,
                     index1=1,
-                    bound1=ast.Boundary.END,
+                    bound1=op.Boundary.END,
                     dsl_regex2=' ',
                     index2=2,
-                    bound2=ast.Boundary.END,
+                    bound2=op.Boundary.END,
                 ),
                 '123 abcd 456',
             ),
@@ -77,13 +77,13 @@ class TestEvaluate(TestCase):
         self.assertEqual(
             ' abcd ',
             evaluate(
-                ast.GetSpan(
-                    dsl_regex1=ast.Type.NUMBER,
+                op.GetSpan(
+                    dsl_regex1=op.Type.NUMBER,
                     index1=-2,
-                    bound1=ast.Boundary.END,
+                    bound1=op.Boundary.END,
                     dsl_regex2=' ',
                     index2=2,
-                    bound2=ast.Boundary.END,
+                    bound2=op.Boundary.END,
                 ),
                 '123 abcd 456',
             ),
@@ -91,13 +91,13 @@ class TestEvaluate(TestCase):
         self.assertEqual(
             ' abcd ',
             evaluate(
-                ast.GetSpan(
-                    dsl_regex1=ast.Type.NUMBER,
+                op.GetSpan(
+                    dsl_regex1=op.Type.NUMBER,
                     index1=1,
-                    bound1=ast.Boundary.END,
+                    bound1=op.Boundary.END,
                     dsl_regex2=' ',
                     index2=-1,
-                    bound2=ast.Boundary.END,
+                    bound2=op.Boundary.END,
                 ),
                 '123 abcd 456',
             ),
@@ -105,13 +105,13 @@ class TestEvaluate(TestCase):
         self.assertEqual(
             '',
             evaluate(
-                ast.GetSpan(
-                    dsl_regex1=ast.Type.NUMBER,
+                op.GetSpan(
+                    dsl_regex1=op.Type.NUMBER,
                     index1=2,
-                    bound1=ast.Boundary.END,
+                    bound1=op.Boundary.END,
                     dsl_regex2=' ',
                     index2=-1,
-                    bound2=ast.Boundary.END,
+                    bound2=op.Boundary.END,
                 ),
                 '123 abcd 456',
             ),
@@ -119,13 +119,13 @@ class TestEvaluate(TestCase):
         self.assertEqual(
             '',
             evaluate(
-                ast.GetSpan(
-                    dsl_regex1=ast.Type.NUMBER,
+                op.GetSpan(
+                    dsl_regex1=op.Type.NUMBER,
                     index1=1,
-                    bound1=ast.Boundary.END,
+                    bound1=op.Boundary.END,
                     dsl_regex2=' ',
                     index2=-3,
-                    bound2=ast.Boundary.END,
+                    bound2=op.Boundary.END,
                 ),
                 '123 abcd 456',
             ),
@@ -134,54 +134,54 @@ class TestEvaluate(TestCase):
     def test_GetToken(self):
         self.assertEqual(
             '456',
-            evaluate(ast.GetToken(ast.Type.NUMBER, 2), '123 abc 456'),
+            evaluate(op.GetToken(op.Type.NUMBER, 2), '123 abc 456'),
         )
         self.assertEqual(
             '999',
-            evaluate(ast.GetToken(ast.Type.NUMBER, 2), '123 abc999 456'),
+            evaluate(op.GetToken(op.Type.NUMBER, 2), '123 abc999 456'),
         )
 
         try:
-            evaluate(ast.GetToken(ast.Type.NUMBER, 3), '123 abc 456')
+            evaluate(op.GetToken(op.Type.NUMBER, 3), '123 abc 456')
             self.fail()
         except IndexError:
             pass
 
         self.assertEqual(
             'abc',
-            evaluate(ast.GetToken(ast.Type.WORD, 1), '123 abc999 456.hi'),
+            evaluate(op.GetToken(op.Type.WORD, 1), '123 abc999 456.hi'),
         )
         self.assertEqual(
             '456',
-            evaluate(ast.GetToken(ast.Type.ALPHANUM, 3), '123 abc999 456.hi'),
+            evaluate(op.GetToken(op.Type.ALPHANUM, 3), '123 abc999 456.hi'),
         )
         self.assertEqual(
             '123',
-            evaluate(ast.GetToken(ast.Type.ALPHANUM, -4), '123 abc999 456.hi'),
+            evaluate(op.GetToken(op.Type.ALPHANUM, -4), '123 abc999 456.hi'),
         )
         self.assertEqual(
             'EF',
-            evaluate(ast.GetToken(ast.Type.ALL_CAPS, 2), 'ABC?dEF@GHI'),
+            evaluate(op.GetToken(op.Type.ALL_CAPS, 2), 'ABC?dEF@GHI'),
         )
         self.assertEqual(
             'B',
-            evaluate(ast.GetToken(ast.Type.PROP_CASE, 2), 'ABC?Def@Ghi'),
+            evaluate(op.GetToken(op.Type.PROP_CASE, 2), 'ABC?Def@Ghi'),
         )
         self.assertEqual(
             'ef',
-            evaluate(ast.GetToken(ast.Type.LOWER, 1), 'ABC?Def ghi'),
+            evaluate(op.GetToken(op.Type.LOWER, 1), 'ABC?Def ghi'),
         )
         self.assertEqual(
             '9',
-            evaluate(ast.GetToken(ast.Type.DIGIT, 4), '123 9'),
+            evaluate(op.GetToken(op.Type.DIGIT, 4), '123 9'),
         )
         self.assertEqual(
             'c',
-            evaluate(ast.GetToken(ast.Type.CHAR, 3), 'abc999 c'),
+            evaluate(op.GetToken(op.Type.CHAR, 3), 'abc999 c'),
         )
 
         try:
-            evaluate(ast.GetToken(ast.Type.CHAR, -5), 'abc999 c'),
+            evaluate(op.GetToken(op.Type.CHAR, -5), 'abc999 c'),
             self.fail()
         except IndexError:
             pass
@@ -189,79 +189,79 @@ class TestEvaluate(TestCase):
     def test_ToCase(self):
         self.assertEqual(
             'Abc def',
-            evaluate(ast.ToCase(ast.Case.PROPER), 'aBc DeF'),
+            evaluate(op.ToCase(op.Case.PROPER), 'aBc DeF'),
         )
         self.assertEqual(
             'ABC DEF',
-            evaluate(ast.ToCase(ast.Case.ALL_CAPS), 'aBc DeF'),
+            evaluate(op.ToCase(op.Case.ALL_CAPS), 'aBc DeF'),
         )
         self.assertEqual(
             'abc def',
-            evaluate(ast.ToCase(ast.Case.LOWER), 'aBc DeF'),
+            evaluate(op.ToCase(op.Case.LOWER), 'aBc DeF'),
         )
 
     def test_Replace(self):
         self.assertEqual(
             'abc@def@ghi',
-            evaluate(ast.Replace('.', '@'), 'abc.def.ghi'),
+            evaluate(op.Replace('.', '@'), 'abc.def.ghi'),
         )
         self.assertEqual(
             'unchanged',
-            evaluate(ast.Replace('.', '@'), 'unchanged'),
+            evaluate(op.Replace('.', '@'), 'unchanged'),
         )
 
     def test_Trim(self):
         self.assertEqual(
             'trimmed',
-            evaluate(ast.Trim(), ' \ttrimmed\n\r'),
+            evaluate(op.Trim(), ' \ttrimmed\n\r'),
         )
 
     def test_GetUpto(self):
         self.assertEqual(
             'a1',
-            evaluate(ast.GetUpto(ast.Type.NUMBER), 'a1.b3? 93 !@4'),
+            evaluate(op.GetUpto(op.Type.NUMBER), 'a1.b3? 93 !@4'),
         )
         self.assertEqual(
             'a1.b3? 93 !@',
-            evaluate(ast.GetUpto('@'), 'a1.b3? 93 !@4'),
+            evaluate(op.GetUpto('@'), 'a1.b3? 93 !@4'),
         )
         self.assertEqual(
             '',
-            evaluate(ast.GetUpto('#'), 'a1.b3? 93 !@4'),
+            evaluate(op.GetUpto('#'), 'a1.b3? 93 !@4'),
         )
 
     def test_GetFrom(self):
         self.assertEqual(
             '1.b3? 93 !@4',
-            evaluate(ast.GetFrom(ast.Type.NUMBER), 'a1.b3? 93 !@4'),
+            evaluate(op.GetFrom(op.Type.NUMBER), 'a1.b3? 93 !@4'),
         )
         self.assertEqual(
             '@4',
-            evaluate(ast.GetFrom('@'), 'a1.b3? 93 !@4'),
+            evaluate(op.GetFrom('@'), 'a1.b3? 93 !@4'),
         )
         self.assertEqual(
             '',
-            evaluate(ast.GetFrom('#'), 'a1.b3? 93 !@4'),
+            evaluate(op.GetFrom('#'), 'a1.b3? 93 !@4'),
         )
 
     def test_GetFirst(self):
         self.assertEqual(
             'a1b393',
-            evaluate(ast.GetFirst(ast.Type.ALPHANUM, 3), 'a1.b3? 93 !@4'),
+            evaluate(op.GetFirst(op.Type.ALPHANUM, 3), 'a1.b3? 93 !@4'),
         )
 
         self.assertEqual(
             '13',
-            evaluate(ast.GetFirst(ast.Type.NUMBER, 2), 'a1.b3? 93 !@4'),
+            evaluate(op.GetFirst(op.Type.NUMBER, 2), 'a1.b3? 93 !@4'),
         )
 
         self.assertEqual(
             '13934',
-            evaluate(ast.GetFirst(ast.Type.NUMBER, 5), 'a1.b3? 93 !@4'),
+            evaluate(op.GetFirst(op.Type.NUMBER, 5), 'a1.b3? 93 !@4'),
         )
 
         try:
-            evaluate(ast.GetFirst(ast.Type.NUMBER, -1), 'a1.b3? 93 !@4'),
+            evaluate(op.GetFirst(op.Type.NUMBER, -1), 'a1.b3? 93 !@4'),
             self.fail()
         except IndexError:
             pass
@@ -269,21 +269,21 @@ class TestEvaluate(TestCase):
     def test_GetAll(self):
         self.assertEqual(
             'a1b3934',
-            evaluate(ast.GetAll(ast.Type.ALPHANUM), 'a1.b3? 93 !@4'),
+            evaluate(op.GetAll(op.Type.ALPHANUM), 'a1.b3? 93 !@4'),
         )
         self.assertEqual(
             'ab',
-            evaluate(ast.GetAll(ast.Type.LOWER), 'a1.b3? 93 !@4'),
+            evaluate(op.GetAll(op.Type.LOWER), 'a1.b3? 93 !@4'),
         )
         self.assertEqual(
             '13934',
-            evaluate(ast.GetAll(ast.Type.NUMBER), 'a1.b3? 93 !@4'),
+            evaluate(op.GetAll(op.Type.NUMBER), 'a1.b3? 93 !@4'),
         )
         self.assertEqual(
             '13934',
-            evaluate(ast.GetAll(ast.Type.DIGIT), 'a1.b3? 93 !@4'),
+            evaluate(op.GetAll(op.Type.DIGIT), 'a1.b3? 93 !@4'),
         )
         self.assertEqual(
             'AbcDefGhi',
-            evaluate(ast.GetAll(ast.Type.PROP_CASE), 'AbcDef#!asd Ghi'),
+            evaluate(op.GetAll(op.Type.PROP_CASE), 'AbcDef#!asd Ghi'),
         )
