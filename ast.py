@@ -51,11 +51,11 @@ class SubStr(Substring):
 
 
 class GetSpan(Substring):
-    def __init__(self, regex1, index1, bound1, regex2, index2, bound2):
-        self.regex1 = regex1
+    def __init__(self, dsl_regex1, index1, bound1, dsl_regex2, index2, bound2):
+        self.dsl_regex1 = dsl_regex1
         self.index1 = index1
         self.bound1 = bound1
-        self.regex2 = regex2
+        self.dsl_regex2 = dsl_regex2
         self.index2 = index2
         self.bound2 = bound2
 
@@ -82,13 +82,13 @@ class Trim(Nesting):
 
 
 class GetUpto(Nesting):
-    def __init__(self, regex):
-        self.regex = regex
+    def __init__(self, dsl_regex):
+        self.dsl_regex = dsl_regex
 
 
 class GetFrom(Nesting):
-    def __init__(self, regex):
-        self.regex = regex
+    def __init__(self, dsl_regex):
+        self.dsl_regex = dsl_regex
 
 
 class GetFirst(Nesting):

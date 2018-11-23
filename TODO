@@ -1,5 +1,9 @@
 Finish evaluate()
+  Fix GetFrom to start from end of regex
+  Remove IndexError as much as possible
+
 Generation of programs
+
 Generation of examples given program
   Use heuristics mentioned in paper
 

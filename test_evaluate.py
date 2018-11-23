@@ -23,6 +23,120 @@ class TestEvaluate(TestCase):
         except IndexError:
             pass
 
+    def test_GetSpan(self):
+        self.assertEqual(
+            '123 abcd',
+            evaluate(
+                ast.GetSpan(
+                    dsl_regex1=ast.Type.NUMBER,
+                    index1=1,
+                    bound1=ast.Boundary.START,
+                    dsl_regex2=' ',
+                    index2=2,
+                    bound2=ast.Boundary.START,
+                ),
+                '123 abcd 456',
+            ),
+        )
+        self.assertEqual(
+            ' abcd',
+            evaluate(
+                ast.GetSpan(
+                    dsl_regex1=ast.Type.NUMBER,
+                    index1=1,
+                    bound1=ast.Boundary.END,
+                    dsl_regex2=' ',
+                    index2=2,
+                    bound2=ast.Boundary.START,
+                ),
+                '123 abcd 456',
+            ),
+        )
+        self.assertEqual(
+            '123 abcd ',
+            evaluate(
+                ast.GetSpan(
+                    dsl_regex1=ast.Type.NUMBER,
+                    index1=1,
+                    bound1=ast.Boundary.START,
+                    dsl_regex2=' ',
+                    index2=2,
+                    bound2=ast.Boundary.END,
+                ),
+                '123 abcd 456',
+            ),
+        )
+        self.assertEqual(
+            ' abcd ',
+            evaluate(
+                ast.GetSpan(
+                    dsl_regex1=ast.Type.NUMBER,
+                    index1=1,
+                    bound1=ast.Boundary.END,
+                    dsl_regex2=' ',
+                    index2=2,
+                    bound2=ast.Boundary.END,
+                ),
+                '123 abcd 456',
+            ),
+        )
+        self.assertEqual(
+            ' abcd ',
+            evaluate(
+                ast.GetSpan(
+                    dsl_regex1=ast.Type.NUMBER,
+                    index1=-2,
+                    bound1=ast.Boundary.END,
+                    dsl_regex2=' ',
+                    index2=2,
+                    bound2=ast.Boundary.END,
+                ),
+                '123 abcd 456',
+            ),
+        )
+        self.assertEqual(
+            ' abcd ',
+            evaluate(
+                ast.GetSpan(
+                    dsl_regex1=ast.Type.NUMBER,
+                    index1=1,
+                    bound1=ast.Boundary.END,
+                    dsl_regex2=' ',
+                    index2=-1,
+                    bound2=ast.Boundary.END,
+                ),
+                '123 abcd 456',
+            ),
+        )
+        self.assertEqual(
+            '',
+            evaluate(
+                ast.GetSpan(
+                    dsl_regex1=ast.Type.NUMBER,
+                    index1=2,
+                    bound1=ast.Boundary.END,
+                    dsl_regex2=' ',
+                    index2=-1,
+                    bound2=ast.Boundary.END,
+                ),
+                '123 abcd 456',
+            ),
+        )
+        self.assertEqual(
+            '',
+            evaluate(
+                ast.GetSpan(
+                    dsl_regex1=ast.Type.NUMBER,
+                    index1=1,
+                    bound1=ast.Boundary.END,
+                    dsl_regex2=' ',
+                    index2=-3,
+                    bound2=ast.Boundary.END,
+                ),
+                '123 abcd 456',
+            ),
+        )
+
     def test_GetToken(self):
         self.assertEqual(
             '456',

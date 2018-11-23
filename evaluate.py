@@ -27,7 +27,19 @@ def evaluate(exp, value):
         return value[p1-1:p2]
 
     if isinstance(exp, ast.GetSpan):
-        raise NotImplementedError
+        p1 = span_index(
+            dsl_regex=exp.dsl_regex1,
+            index=exp.index1,
+            bound=exp.bound1,
+            value=value,
+        )
+        p2 = span_index(
+            dsl_regex=exp.dsl_regex2,
+            index=exp.index2,
+            bound=exp.bound2,
+            value=value,
+        )
+        return value[p1:p2]
 
     if isinstance(exp, ast.GetToken):
         matches = match_type(exp.type_, value)
@@ -56,7 +68,7 @@ def evaluate(exp, value):
         return value.strip()
 
     if isinstance(exp, ast.GetUpto):
-        matches = match_dsl_regex(exp.regex, value)
+        matches = match_dsl_regex(exp.dsl_regex, value)
 
         if len(matches) == 0:
             return ''
@@ -65,7 +77,7 @@ def evaluate(exp, value):
         return value[:first[1]]
 
     if isinstance(exp, ast.GetFrom):
-        matches = match_dsl_regex(exp.regex, value)
+        matches = match_dsl_regex(exp.dsl_regex, value)
 
         if len(matches) == 0:
             return ''
@@ -89,6 +101,21 @@ def evaluate(exp, value):
 
 # By convention, we always prefix the DSL regex with 'dsl_' as a way to
 # distinguish it with regular regexes.
+def span_index(dsl_regex, index, bound, value):
+    matches = match_dsl_regex(dsl_regex, value)
+    # Positive indices start at 1, so we need to substract 1
+    index = index if index < 0 else index - 1
+
+    if index >= len(matches):
+        return len(matches) - 1
+
+    if index < -len(matches):
+        return 0
+
+    span = matches[index]
+    return span[0] if bound == ast.Boundary.START else span[1]
+
+
 def match_dsl_regex(dsl_regex, value):
     if isinstance(dsl_regex, ast.Type):
         regex = regex_for_type(dsl_regex)
