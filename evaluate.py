@@ -30,7 +30,7 @@ def evaluate(exp, value):
         raise NotImplementedError
 
     if isinstance(exp, ast.GetToken):
-        matches = match_value(exp.type_, value)
+        matches = match_type(exp.type_, value)
         i = exp.index
         if exp.index > 0:
             # Positive indices start at 1
@@ -56,13 +56,19 @@ def evaluate(exp, value):
         return value.strip()
 
     if isinstance(exp, ast.GetUpto):
-        raise NotImplementedError
+        matches = match_dsl_regex(exp.regex, value)
+
+        if len(matches) == 0:
+            return ''
+
+        first = matches[0]
+        return value[:first[1]]
 
     if isinstance(exp, ast.GetFrom):
         raise NotImplementedError
 
     if isinstance(exp, ast.GetFirst):
-        matches = match_value(exp.type_, value)
+        matches = match_type(exp.type_, value)
 
         if exp.index < 0 or exp.index > len(matches):
             raise IndexError
@@ -70,38 +76,49 @@ def evaluate(exp, value):
         return ''.join(matches[:exp.index])
 
     if isinstance(exp, ast.GetAll):
-        return ''.join(match_value(exp.type_, value))
+        return ''.join(match_type(exp.type_, value))
 
     raise ValueError('Unsupported operator: {}'.format(exp))
 
 
-def match_value(type_, value):
-    regex = regex_for_type(type_)
+# By convention, we always prefix the DSL regex with 'dsl_' as a way to
+# distinguish it with regular regexes.
+def match_dsl_regex(dsl_regex, value):
+    if isinstance(dsl_regex, ast.Type):
+        regex = regex_for_type(dsl_regex)
+    else:
+        assert len(dsl_regex) == 1 and dsl_regex in ast.DELIMITER
+        regex = '[' + re.escape(dsl_regex) + ']'
+
     return [
-        t
-        for t in re.findall(regex, value)
-        if t != ''
+        match.span()
+        for match in re.finditer(regex, value)
     ]
+
+
+def match_type(type_, value):
+    regex = regex_for_type(type_)
+    return re.findall(regex, value)
 
 
 def regex_for_type(type_):
     if type_ == ast.Type.NUMBER:
-        return '[0-9]*'
+        return '[0-9]+'
 
     if type_ == ast.Type.WORD:
-        return '[A-Za-z]*'
+        return '[A-Za-z]+'
 
     if type_ == ast.Type.ALPHANUM:
-        return '[A-Za-z0-9]*'
+        return '[A-Za-z0-9]+'
 
     if type_ == ast.Type.ALL_CAPS:
-        return '[A-Z]*'
+        return '[A-Z]+'
 
     if type_ == ast.Type.PROP_CASE:
         return '[A-Z][a-z]*'
 
     if type_ == ast.Type.LOWER:
-        return '[a-z]*'
+        return '[a-z]+'
 
     if type_ == ast.Type.DIGIT:
         return '[0-9]'

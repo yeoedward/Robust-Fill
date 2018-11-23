@@ -108,6 +108,20 @@ class TestEvaluate(TestCase):
             evaluate(ast.Trim(), ' \ttrimmed\n\r'),
         )
 
+    def test_GetUpto(self):
+        self.assertEqual(
+            'a1',
+            evaluate(ast.GetUpto(ast.Type.NUMBER), 'a1.b3? 93 !@4'),
+        )
+        self.assertEqual(
+            'a1.b3? 93 !@',
+            evaluate(ast.GetUpto('@'), 'a1.b3? 93 !@4'),
+        )
+        self.assertEqual(
+            '',
+            evaluate(ast.GetUpto('#'), 'a1.b3? 93 !@4'),
+        )
+
     def test_GetFirst(self):
         self.assertEqual(
             'a1b393',
