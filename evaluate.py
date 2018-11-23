@@ -65,7 +65,13 @@ def evaluate(exp, value):
         return value[:first[1]]
 
     if isinstance(exp, ast.GetFrom):
-        raise NotImplementedError
+        matches = match_dsl_regex(exp.regex, value)
+
+        if len(matches) == 0:
+            return ''
+
+        first = matches[0]
+        return value[first[0]:]
 
     if isinstance(exp, ast.GetFirst):
         matches = match_type(exp.type_, value)

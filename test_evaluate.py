@@ -122,6 +122,20 @@ class TestEvaluate(TestCase):
             evaluate(ast.GetUpto('#'), 'a1.b3? 93 !@4'),
         )
 
+    def test_GetFrom(self):
+        self.assertEqual(
+            '1.b3? 93 !@4',
+            evaluate(ast.GetFrom(ast.Type.NUMBER), 'a1.b3? 93 !@4'),
+        )
+        self.assertEqual(
+            '@4',
+            evaluate(ast.GetFrom('@'), 'a1.b3? 93 !@4'),
+        )
+        self.assertEqual(
+            '',
+            evaluate(ast.GetFrom('#'), 'a1.b3? 93 !@4'),
+        )
+
     def test_GetFirst(self):
         self.assertEqual(
             'a1b393',
