@@ -20,11 +20,9 @@ def evaluate(exp, value):
         return exp.char
 
     if isinstance(exp, ast.SubStr):
-        p1 = exp.pos1 if exp.pos1 > 0 else len(value) + exp.pos1
-        p2 = exp.pos2 if exp.pos2 > 0 else len(value) + exp.pos2
-        if p1 - 1 < 0 or p2 > len(value):
-            raise IndexError
-        return value[p1-1:p2]
+        p1 = substr_index(exp.pos1, value)
+        p2 = substr_index(exp.pos2, value)
+        return value[p1:p2+1]
 
     if isinstance(exp, ast.GetSpan):
         p1 = span_index(
@@ -88,7 +86,7 @@ def evaluate(exp, value):
     if isinstance(exp, ast.GetFirst):
         matches = match_type(exp.type_, value)
 
-        if exp.index < 0 or exp.index > len(matches):
+        if exp.index < 0:
             raise IndexError
 
         return ''.join(matches[:exp.index])
@@ -97,6 +95,20 @@ def evaluate(exp, value):
         return ''.join(match_type(exp.type_, value))
 
     raise ValueError('Unsupported operator: {}'.format(exp))
+
+
+def substr_index(pos, value):
+    p = pos if pos > 0 else len(value) + pos
+
+    # Positive indices start at 1, so we need to substract 1
+    if p > 0:
+        p -= 1
+
+    # If negative, we don't want it to wrap around.
+    if p < 0:
+        p = 0
+
+    return p
 
 
 # By convention, we always prefix the DSL regex with 'dsl_' as a way to

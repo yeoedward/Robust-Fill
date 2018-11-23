@@ -12,16 +12,10 @@ class TestEvaluate(TestCase):
         self.assertEqual('123', evaluate(ast.SubStr(1, 3), '1234'))
         self.assertEqual('4', evaluate(ast.SubStr(0, 4), '1234'))
         self.assertEqual('234', evaluate(ast.SubStr(-2, 4), '1234'))
-        try:
-            evaluate(ast.SubStr(2, 5), '1234')
-            self.fail()
-        except IndexError:
-            pass
-        try:
-            evaluate(ast.SubStr(-4, 3), '1234')
-            self.fail()
-        except IndexError:
-            pass
+        self.assertEqual('234', evaluate(ast.SubStr(2, 5), '1234'))
+        self.assertEqual('123', evaluate(ast.SubStr(-5, 3), '1234'))
+        self.assertEqual('2', evaluate(ast.SubStr(2, 2), '1234'))
+        self.assertEqual('', evaluate(ast.SubStr(3, 2), '1234'))
 
     def test_GetSpan(self):
         self.assertEqual(
@@ -261,11 +255,10 @@ class TestEvaluate(TestCase):
             evaluate(ast.GetFirst(ast.Type.NUMBER, 2), 'a1.b3? 93 !@4'),
         )
 
-        try:
+        self.assertEqual(
+            '13934',
             evaluate(ast.GetFirst(ast.Type.NUMBER, 5), 'a1.b3? 93 !@4'),
-            self.fail()
-        except IndexError:
-            pass
+        )
 
         try:
             evaluate(ast.GetFirst(ast.Type.NUMBER, -1), 'a1.b3? 93 !@4'),
