@@ -1,9 +1,9 @@
 Finish evaluate()
-  Fix GetFrom to start from end of regex
   Add test cases for composable expressions
     Use examples from paper
 
 Generation of programs
+  Can we use named tuples instead of classes in operators.py?
 
 Generation of examples given program
   Use heuristics mentioned in paper

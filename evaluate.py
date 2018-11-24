@@ -81,7 +81,7 @@ def evaluate(exp, value):
             return ''
 
         first = matches[0]
-        return value[first[0]:]
+        return value[first[1]:]
 
     if isinstance(exp, op.GetFirst):
         matches = match_type(exp.type_, value)

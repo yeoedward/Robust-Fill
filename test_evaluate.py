@@ -232,11 +232,11 @@ class TestEvaluate(TestCase):
 
     def test_GetFrom(self):
         self.assertEqual(
-            '1.b3? 93 !@4',
+            '.b3? 93 !@4',
             evaluate(op.GetFrom(op.Type.NUMBER), 'a1.b3? 93 !@4'),
         )
         self.assertEqual(
-            '@4',
+            '4',
             evaluate(op.GetFrom('@'), 'a1.b3? 93 !@4'),
         )
         self.assertEqual(
