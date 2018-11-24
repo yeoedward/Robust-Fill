@@ -4,7 +4,7 @@ import operators as op
 
 
 def evaluate(exp, value):
-    if isinstance(exp, op.Program):
+    if isinstance(exp, op.Concat):
         return ''.join([
             evaluate(e, value)
             for e in exp.expressions
@@ -169,6 +169,6 @@ def regex_for_type(type_):
         return '[0-9]'
 
     if type_ == op.Type.CHAR:
-        return '[A-Za-z]'
+        return '[A-Za-z0-9]'
 
     raise ValueError('Unsupported type: {}'.format(type_))

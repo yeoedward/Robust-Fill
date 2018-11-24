@@ -6,11 +6,16 @@ from string import ascii_letters, digits, punctuation, whitespace
 POSITION = [-100, 100]
 # 0 is intentionally missing
 INDEX = [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5]
+# Should this be same as Type.CHAR?
 CHARACTER = ''.join([ascii_letters, digits, punctuation])
 DELIMITER = punctuation + whitespace
 
 
 class Program(object):
+    pass
+
+
+class Concat(Program):
     def __init__(self, *args):
         self.expressions = args
 

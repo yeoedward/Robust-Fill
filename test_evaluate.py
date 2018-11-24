@@ -5,6 +5,34 @@ from evaluate import evaluate
 
 
 class TestEvaluate(TestCase):
+    def test_Concat(self):
+        program = op.Concat(
+            op.GetToken(op.Type.ALPHANUM, 3),
+            op.GetFrom(':'),
+            op.GetFirst(op.Type.CHAR, 4),
+        )
+
+        self.assertEqual(
+            '2525,JV3 ObbUd92',
+            evaluate(program, 'Ud 9:25,JV3 Obb'),
+        )
+        self.assertEqual(
+            '843 A44qzLny',
+            evaluate(program, 'zLny xmHg 8:43 A44q'),
+        )
+        self.assertEqual(
+            '1063 JfA6g4',
+            evaluate(program, 'A6 g45P 10:63 Jf'),
+        )
+        self.assertEqual(
+            'dDX31cuLz',
+            evaluate(program, 'cuL.zF.dDX,12:31'),
+        )
+        self.assertEqual(
+            'bj3u11ZiGO',
+            evaluate(program, 'ZiG OE bj3u 7:11'),
+        )
+
     def test_ConstStr(self):
         self.assertEqual('c', evaluate(op.ConstStr('c'), 'ignored'))
 
@@ -181,7 +209,7 @@ class TestEvaluate(TestCase):
         )
 
         try:
-            evaluate(op.GetToken(op.Type.CHAR, -5), 'abc999 c'),
+            evaluate(op.GetToken(op.Type.CHAR, -8), 'abc999 c'),
             self.fail()
         except IndexError:
             pass
