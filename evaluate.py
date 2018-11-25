@@ -166,6 +166,7 @@ def regex_for_type(type_):
     if type_ == op.Type.DIGIT:
         return '[0-9]'
 
+    # TODO: Should this use op.CHARACTER?
     if type_ == op.Type.CHAR:
         return '[A-Za-z0-9]'
 

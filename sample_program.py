@@ -12,7 +12,7 @@ def sample_program(max_expressions):
 
 
 def sample_from(*samplers):
-    choice = random.sample(samplers, 1)[0]
+    choice = random.choice(samplers)
     return choice()
 
 
@@ -55,7 +55,7 @@ def sample_Apply():
 
 
 def sample_ConstStr():
-    char = random.sample(op.CHARACTER, 1)[0]
+    char = random.choice(op.CHARACTER)
     return op.ConstStr(char)
 
 
@@ -70,7 +70,7 @@ def sample_SubStr():
 
 
 def sample_Boundary():
-    return random.sample(list(op.Boundary), 1)[0]
+    return random.choice(list(op.Boundary))
 
 
 def sample_GetSpan():
@@ -85,11 +85,11 @@ def sample_GetSpan():
 
 
 def sample_Type():
-    return random.sample(list(op.Type), 1)[0]
+    return random.choice(list(op.Type))
 
 
 def sample_index():
-    return random.sample(op.INDEX, 1)[0]
+    return random.choice(op.INDEX)
 
 
 def sample_GetToken():
@@ -99,12 +99,12 @@ def sample_GetToken():
 
 
 def sample_ToCase():
-    case = random.sample(list(op.Case), 1)[0]
+    case = random.choice(list(op.Case))
     return op.ToCase(case)
 
 
 def sample_delimiter():
-    return random.sample(op.DELIMITER, 1)[0]
+    return random.choice(op.DELIMITER)
 
 
 def sample_Replace():
@@ -118,7 +118,7 @@ def sample_Trim():
 
 
 def sample_dsl_regex():
-    return random.sample(list(op.Type) + list(op.DELIMITER), 1)[0]
+    return random.choice(list(op.Type) + list(op.DELIMITER))
 
 
 def sample_GetUpto():
