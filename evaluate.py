@@ -92,7 +92,7 @@ def evaluate(exp, value):
         return ''.join(matches[:exp.index])
 
     if isinstance(exp, op.GetAll):
-        return ''.join(match_type(exp.type_, value))
+        return ' '.join(match_type(exp.type_, value))
 
     raise ValueError('Unsupported operator: {}'.format(exp))
 
@@ -160,7 +160,7 @@ def regex_for_type(type_):
         return '[A-Z]+'
 
     if type_ == op.Type.PROP_CASE:
-        return '[A-Z][a-z]*'
+        return '[A-Z][a-z]+'
 
     if type_ == op.Type.LOWER:
         return '[a-z]+'

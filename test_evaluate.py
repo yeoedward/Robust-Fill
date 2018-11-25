@@ -5,34 +5,6 @@ from evaluate import evaluate
 
 
 class TestEvaluate(TestCase):
-    def test_Concat(self):
-        program = op.Concat(
-            op.GetToken(op.Type.ALPHANUM, 3),
-            op.GetFrom(':'),
-            op.GetFirst(op.Type.CHAR, 4),
-        )
-
-        self.assertEqual(
-            '2525,JV3 ObbUd92',
-            evaluate(program, 'Ud 9:25,JV3 Obb'),
-        )
-        self.assertEqual(
-            '843 A44qzLny',
-            evaluate(program, 'zLny xmHg 8:43 A44q'),
-        )
-        self.assertEqual(
-            '1063 JfA6g4',
-            evaluate(program, 'A6 g45P 10:63 Jf'),
-        )
-        self.assertEqual(
-            'dDX31cuLz',
-            evaluate(program, 'cuL.zF.dDX,12:31'),
-        )
-        self.assertEqual(
-            'bj3u11ZiGO',
-            evaluate(program, 'ZiG OE bj3u 7:11'),
-        )
-
     def test_ConstStr(self):
         self.assertEqual('c', evaluate(op.ConstStr('c'), 'ignored'))
 
@@ -192,7 +164,7 @@ class TestEvaluate(TestCase):
             evaluate(op.GetToken(op.Type.ALL_CAPS, 2), 'ABC?dEF@GHI'),
         )
         self.assertEqual(
-            'B',
+            'Ghi',
             evaluate(op.GetToken(op.Type.PROP_CASE, 2), 'ABC?Def@Ghi'),
         )
         self.assertEqual(
@@ -296,22 +268,107 @@ class TestEvaluate(TestCase):
 
     def test_GetAll(self):
         self.assertEqual(
-            'a1b3934',
+            'a1 b3 93 4',
             evaluate(op.GetAll(op.Type.ALPHANUM), 'a1.b3? 93 !@4'),
         )
         self.assertEqual(
-            'ab',
+            'a b',
             evaluate(op.GetAll(op.Type.LOWER), 'a1.b3? 93 !@4'),
         )
         self.assertEqual(
-            '13934',
+            '1 3 93 4',
             evaluate(op.GetAll(op.Type.NUMBER), 'a1.b3? 93 !@4'),
         )
         self.assertEqual(
-            '13934',
+            '1 3 9 3 4',
             evaluate(op.GetAll(op.Type.DIGIT), 'a1.b3? 93 !@4'),
         )
         self.assertEqual(
-            'AbcDefGhi',
+            'Abc Def Ghi',
             evaluate(op.GetAll(op.Type.PROP_CASE), 'AbcDef#!asd Ghi'),
+        )
+
+    def test_reference1(self):
+        program = op.Concat(
+            op.GetToken(op.Type.ALPHANUM, 3),
+            op.GetFrom(':'),
+            op.GetFirst(op.Type.CHAR, 4),
+        )
+
+        self.assertEqual(
+            '2525,JV3 ObbUd92',
+            evaluate(program, 'Ud 9:25,JV3 Obb'),
+        )
+        self.assertEqual(
+            '843 A44qzLny',
+            evaluate(program, 'zLny xmHg 8:43 A44q'),
+        )
+        self.assertEqual(
+            '1063 JfA6g4',
+            evaluate(program, 'A6 g45P 10:63 Jf'),
+        )
+        self.assertEqual(
+            'dDX31cuLz',
+            evaluate(program, 'cuL.zF.dDX,12:31'),
+        )
+        self.assertEqual(
+            'bj3u11ZiGO',
+            evaluate(program, 'ZiG OE bj3u 7:11'),
+        )
+
+    # The examples provided in the paper are wrong!
+    # Some expected results have letters that don't even appear in
+    # the source. I've changed some of the expected results so that
+    # they "make sense".
+    def test_reference2(self):
+        get_span = op.GetSpan(
+            dsl_regex1=op.Type.WORD,
+            index1=1,
+            bound1=op.Boundary.START,
+            dsl_regex2='(',
+            index2=5,
+            bound2=op.Boundary.START,
+        )
+        program = op.Concat(
+            op.ApplySubstring(op.GetToken(op.Type.WORD, -1), get_span),
+            op.GetToken(op.Type.NUMBER, -5),
+            op.GetAll(op.Type.PROP_CASE),
+            op.SubStr(-24, -14),
+            op.GetToken(op.Type.ALPHANUM, -2),
+        )
+
+        self.assertEqual(
+            'Qagimg4Kw Sr Vf Qagimg xVf )4 )8 Qagimg',
+            evaluate(
+                program,
+                '4 Kw ( )SrK (11 (3 CHA xVf )4 )8 Qagimg ) ()(vs',
+            ),
+        )
+        self.assertEqual(
+            'Hpprsqr8Zs Zk HpprsqrnZk.6 (E4w 2',
+            evaluate(
+                program,
+                'iY) )hspA.5 ( )8,ZsLL (nZk.6 (E4w )2(Hpprsqr)2(Z',
+            ),
+        )
+        self.assertEqual(
+            'hz1005Cqg Hadj Tqwpaxft10 Hadj )zg5',
+            evaluate(
+                program,
+                'Cqg) ) ( (1005 ( ( )VCE hz ) (10 Hadj )zgTqwpaxft-7 5 6',
+            ),
+        )
+        self.assertEqual(
+            'lU7Jv Ihitux Fl(7 XLTD sfs6',
+            evaluate(
+                program,
+                'JvY) (Ihitux ) ) ( (6 SFl (7 XLTD sfs ))11,lU7 (6 9',
+            ),
+        )
+        self.assertEqual(
+            'DXR4Njt Pu Ztje) )6 aX 4 )6',
+            evaluate(
+                program,
+                'NjtT(D7QV (4 (yPuY )8.sa ( ) )6 aX 4 )DXR (@6 ) Ztje',
+            ),
         )
