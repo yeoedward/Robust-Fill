@@ -32,16 +32,10 @@ class Nesting(Expression):
     pass
 
 
-class ApplyNesting(Nesting):
-    def __init__(self, nesting1, nesting2):
-        self.nesting1 = nesting1
-        self.nesting2 = nesting2
-
-
-class ApplySubstring(Nesting):
-    def __init__(self, nesting, substring):
+class Apply(Nesting):
+    def __init__(self, nesting, nesting_or_substring):
         self.nesting = nesting
-        self.substring = substring
+        self.nesting_or_substring = nesting_or_substring
 
 
 class ConstStr(Expression):

@@ -10,8 +10,8 @@ class TestEvaluate(TestCase):
 
     def test_SubStr(self):
         self.assertEqual('123', evaluate(op.SubStr(1, 3), '1234'))
-        self.assertEqual('4', evaluate(op.SubStr(0, 4), '1234'))
-        self.assertEqual('234', evaluate(op.SubStr(-2, 4), '1234'))
+        self.assertEqual('1234', evaluate(op.SubStr(0, 4), '1234'))
+        self.assertEqual('34', evaluate(op.SubStr(-2, 4), '1234'))
         self.assertEqual('234', evaluate(op.SubStr(2, 5), '1234'))
         self.assertEqual('123', evaluate(op.SubStr(-5, 3), '1234'))
         self.assertEqual('2', evaluate(op.SubStr(2, 2), '1234'))
@@ -330,7 +330,7 @@ class TestEvaluate(TestCase):
             bound2=op.Boundary.START,
         )
         program = op.Concat(
-            op.ApplySubstring(op.GetToken(op.Type.WORD, -1), get_span),
+            op.Apply(op.GetToken(op.Type.WORD, -1), get_span),
             op.GetToken(op.Type.NUMBER, -5),
             op.GetAll(op.Type.PROP_CASE),
             op.SubStr(-24, -14),
@@ -338,37 +338,102 @@ class TestEvaluate(TestCase):
         )
 
         self.assertEqual(
-            'Qagimg4Kw Sr Vf Qagimg xVf )4 )8 Qagimg',
+            'Qagimg4Kw Sr Vf QagimgxVf )4 )8 QQagimg',
             evaluate(
                 program,
                 '4 Kw ( )SrK (11 (3 CHA xVf )4 )8 Qagimg ) ()(vs',
             ),
         )
         self.assertEqual(
-            'Hpprsqr8Zs Zk HpprsqrnZk.6 (E4w 2',
+            'Hpprsqr8Zs Zk HpprsqrZk.6 (E4w )2',
             evaluate(
                 program,
                 'iY) )hspA.5 ( )8,ZsLL (nZk.6 (E4w )2(Hpprsqr)2(Z',
             ),
         )
         self.assertEqual(
-            'hz1005Cqg Hadj Tqwpaxft10 Hadj )zg5',
+            'hz1005Cqg Hadj Tqwpaxft0 Hadj )zgT5',
             evaluate(
                 program,
                 'Cqg) ) ( (1005 ( ( )VCE hz ) (10 Hadj )zgTqwpaxft-7 5 6',
             ),
         )
         self.assertEqual(
-            'lU7Jv Ihitux Fl(7 XLTD sfs6',
+            'lU7Jv Ihitux Fl7 XLTD sfs 6',
             evaluate(
                 program,
                 'JvY) (Ihitux ) ) ( (6 SFl (7 XLTD sfs ))11,lU7 (6 9',
             ),
         )
         self.assertEqual(
-            'DXR4Njt Pu Ztje) )6 aX 4 )6',
+            'DXR4Njt Pu Ztje )6 aX 4 )D6',
             evaluate(
                 program,
                 'NjtT(D7QV (4 (yPuY )8.sa ( ) )6 aX 4 )DXR (@6 ) Ztje',
             ),
+        )
+
+    def test_reference3(self):
+        get_span = op.GetSpan(
+            dsl_regex1=op.Type.ALL_CAPS,
+            index1=1,
+            bound1=op.Boundary.START,
+            dsl_regex2=op.Type.ALL_CAPS,
+            index2=5,
+            bound2=op.Boundary.START,
+        )
+        program = op.Apply(op.GetToken(op.Type.ALL_CAPS, -2), get_span)
+
+        self.assertEqual(
+            'W',
+            evaluate(program, 'YDXJZ @ZYUD Wc-YKT GTIL BNX'),
+        )
+        self.assertEqual(
+            'MTHV',
+            evaluate(program, 'JUGRB.MPKA.MTHV,tEczT-GZJ.MFT'),
+        )
+        self.assertEqual(
+            'JC',
+            evaluate(program, 'VXO.OMQDK.JC-OAR,HZGH-DJKC'),
+        )
+        self.assertEqual(
+            'RTTRQ',
+            evaluate(program, 'HCUD-WDOC,RTTRQ-KVETK-whx-DIKDI'),
+        )
+        self.assertEqual(
+            'ODZBT',
+            evaluate(program, 'JFNB.Avj,ODZBT-XHV,KYB @,RHVVW'),
+        )
+
+    def test_reference4(self):
+        program = op.Concat(
+            op.SubStr(-20, -8),
+            op.GetToken(op.Type.ALL_CAPS, -3),
+            op.SubStr(11, 19),
+            op.GetToken(op.Type.ALPHANUM, -5),
+        )
+
+        self.assertEqual(
+            'IN ZZUK,nCF aCF6 OZQIN ZOZQIN',
+            evaluate(program, 'DvD 6X xkd6 OZQIN ZZUK,nCF aQR IOHR'),
+        )
+
+        self.assertEqual(
+            'CRCUC,ONFZA.mONFZAy,44-CRCU44',
+            evaluate(program, 'BHP-euSZ,yy,44-CRCUC,ONFZA.mgOJ.Hwm'),
+        )
+
+        self.assertEqual(
+            ',CMFEX-JPFA,iCMFEXrL.GmOc.PPFLH',
+            evaluate(program, 'NGM-8nay,xrL.GmOc.PFLH,CMFEX-JPFA,iIcj,329'),
+        )
+
+        self.assertEqual(
+            ' NCPYJ oo FS FSycb NCPYJNCPYJ',
+            evaluate(program, 'hU TQFLD Lycb NCPYJ oo FS TUM l6F'),
+        )
+
+        self.assertEqual(
+            'L 8Ucj dUqh CUXKQRN KDLKDL',
+            evaluate(program, 'OHHS NNDQ XKQRN KDL 8Ucj dUqh Cpk Kafj'),
         )

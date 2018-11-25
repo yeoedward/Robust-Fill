@@ -10,11 +10,11 @@ def evaluate(exp, value):
             for e in exp.expressions
         ])
 
-    if isinstance(exp, op.ApplyNesting):
-        return evaluate(exp.nesting1, evaluate(exp.nesting2, value))
-
-    if isinstance(exp, op.ApplySubstring):
-        return evaluate(exp.nesting, evaluate(exp.substring, value))
+    if isinstance(exp, op.Apply):
+        return evaluate(
+            exp.nesting,
+            evaluate(exp.nesting_or_substring, value),
+        )
 
     if isinstance(exp, op.ConstStr):
         return exp.char
@@ -98,17 +98,15 @@ def evaluate(exp, value):
 
 
 def substr_index(pos, value):
-    p = pos if pos > 0 else len(value) + pos
+    # DSL index starts at one
+    if pos > 0:
+        return pos - 1
 
-    # Positive indices start at 1, so we need to substract 1
-    if p > 0:
-        p -= 1
+    # Prevent underflow
+    if abs(pos) > len(value):
+        return 0
 
-    # If negative, we don't want it to wrap around.
-    if p < 0:
-        p = 0
-
-    return p
+    return pos
 
 
 # By convention, we always prefix the DSL regex with 'dsl_' as a way to
