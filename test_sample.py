@@ -1,6 +1,6 @@
 from unittest import TestCase
 
-from sample_example import sample_example
+from sample import sample_example
 
 
 class TestSample(TestCase):
