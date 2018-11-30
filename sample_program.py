@@ -133,7 +133,10 @@ def sample_GetFrom():
 
 def sample_GetFirst():
     type_ = sample_Type()
-    index = sample_index()
+    index = random.choice([
+        i for i in op.INDEX
+        if i > 0
+    ])
     return op.GetFirst(type_, index)
 
 
