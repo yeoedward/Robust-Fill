@@ -15,7 +15,11 @@ class TestEvaluate(TestCase):
         self.assertEqual('234', evaluate(op.SubStr(2, 5), '1234'))
         self.assertEqual('123', evaluate(op.SubStr(-5, 3), '1234'))
         self.assertEqual('2', evaluate(op.SubStr(2, 2), '1234'))
+        self.assertEqual('3', evaluate(op.SubStr(-2, -2), '1234'))
         self.assertEqual('', evaluate(op.SubStr(3, 2), '1234'))
+        self.assertEqual('23', evaluate(op.SubStr(2, -2), '1234'))
+        self.assertEqual('234', evaluate(op.SubStr(2, -1), '1234'))
+        self.assertEqual('', evaluate(op.SubStr(2, 0), '1234'))
 
     def test_GetSpan(self):
         self.assertEqual(

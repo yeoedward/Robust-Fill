@@ -22,6 +22,12 @@ def evaluate(exp, value):
     if isinstance(exp, op.SubStr):
         p1 = substr_index(exp.pos1, value)
         p2 = substr_index(exp.pos2, value)
+
+        # Edge case: When p2 == -1, incrementing by one doesn't
+        # make it inclusive. Instead, an empty string is always returned.
+        if p2 == -1:
+            return value[p1:]
+
         return value[p1:p2+1]
 
     if isinstance(exp, op.GetSpan):
