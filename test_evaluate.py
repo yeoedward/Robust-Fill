@@ -20,6 +20,7 @@ class TestEvaluate(TestCase):
         self.assertEqual('23', evaluate(op.SubStr(2, -2), '1234'))
         self.assertEqual('234', evaluate(op.SubStr(2, -1), '1234'))
         self.assertEqual('', evaluate(op.SubStr(2, 0), '1234'))
+        self.assertEqual('', evaluate(op.SubStr(-2, -3), '1234'))
 
     def test_GetSpan(self):
         self.assertEqual(
