@@ -2,7 +2,6 @@ from collections import namedtuple
 import logging
 import random
 
-from evaluate import evaluate
 from sample_program import sample_program
 from to_string import to_string
 import operators as op
@@ -41,7 +40,7 @@ def sample_example(
         while True:
             string = sample_string(program, max_characters)
             try:
-                transformed = evaluate(program, string)
+                transformed = program.eval(string)
 
                 assert isinstance(transformed, str)
 
