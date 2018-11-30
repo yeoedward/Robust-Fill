@@ -18,6 +18,13 @@ class DSL(ABC):
     def eval(self, value):
         raise NotImplementedError
 
+    @abstractmethod
+    def to_string(self, indent, tab):
+        raise NotImplementedError
+
+    def __repr__(self):
+        return self.to_string(indent=0, tab=4)
+
 
 class Program(DSL):
     pass
@@ -32,6 +39,13 @@ class Concat(Program):
             e.eval(value)
             for e in self.expressions
         ])
+
+    def to_string(self, indent, tab):
+        sub_exps = [
+            e.to_string(indent=indent+tab, tab=tab)
+            for e in self.expressions
+        ]
+        return op_to_string('Concat', sub_exps, indent, recursive=True)
 
 
 class Expression(DSL):
@@ -56,6 +70,19 @@ class Compose(Nesting):
             self.nesting_or_substring.eval(value),
         )
 
+    def to_string(self, indent, tab):
+        new_indent = indent + tab
+        nesting = self.nesting.to_string(indent=new_indent, tab=tab)
+        nesting_or_substring = self.nesting_or_substring.to_string(
+            indent=new_indent,
+            tab=tab,
+        )
+        return op_to_string(
+            'Compose',
+            [nesting, nesting_or_substring],
+            indent,
+            recursive=True)
+
 
 class ConstStr(Expression):
     def __init__(self, char):
@@ -63,6 +90,9 @@ class ConstStr(Expression):
 
     def eval(self, value):
         return self.char
+
+    def to_string(self, indent, tab):
+        return op_to_string('ConstStr', [self.char], indent)
 
 
 class SubStr(Substring):
@@ -92,6 +122,9 @@ class SubStr(Substring):
             return value[p1:]
 
         return value[p1:p2+1]
+
+    def to_string(self, indent, tab):
+        return op_to_string('SubStr', [self.pos1, self.pos2], indent)
 
 
 class GetSpan(Substring):
@@ -135,6 +168,20 @@ class GetSpan(Substring):
         )
         return value[p1:p2]
 
+    def to_string(self, indent, tab):
+        return op_to_string(
+            'GetSpan',
+            [
+                self.dsl_regex1,
+                self.index1,
+                self.bound1,
+                self.dsl_regex2,
+                self.index2,
+                self.bound2,
+            ],
+            indent,
+        )
+
 
 class GetToken(Nesting):
     def __init__(self, type_, index):
@@ -148,6 +195,9 @@ class GetToken(Nesting):
             # Positive indices start at 1
             i -= 1
         return matches[i]
+
+    def to_string(self, indent, tab):
+        return op_to_string('GetToken', [self.type_, self.index], indent)
 
 
 class ToCase(Nesting):
@@ -166,6 +216,9 @@ class ToCase(Nesting):
 
         raise ValueError('Invalid case: {}'.format(self.case))
 
+    def to_string(self, indent, tab):
+        return op_to_string('ToCase', [self.case], indent)
+
 
 class Replace(Nesting):
     def __init__(self, delim1, delim2):
@@ -175,10 +228,16 @@ class Replace(Nesting):
     def eval(self, value):
         return value.replace(self.delim1, self.delim2)
 
+    def to_string(self, indent, tab):
+        return op_to_string('Replace', [self.delim1, self.delim2], indent)
+
 
 class Trim(Nesting):
     def eval(self, value):
         return value.strip()
+
+    def to_string(self, indent, tab):
+        return op_to_string('Trim', [], indent)
 
 
 class GetUpto(Nesting):
@@ -194,6 +253,9 @@ class GetUpto(Nesting):
         first = matches[0]
         return value[:first[1]]
 
+    def to_string(self, indent, tab):
+        return op_to_string('GetUpto', [self.dsl_regex], indent)
+
 
 class GetFrom(Nesting):
     def __init__(self, dsl_regex):
@@ -207,6 +269,9 @@ class GetFrom(Nesting):
 
         first = matches[0]
         return value[first[1]:]
+
+    def to_string(self, indent, tab):
+        return op_to_string('GetFrom', [self.dsl_regex], indent)
 
 
 class GetFirst(Nesting):
@@ -222,6 +287,9 @@ class GetFirst(Nesting):
 
         return ''.join(matches[:self.index])
 
+    def to_string(self, indent, tab):
+        return op_to_string('GetFirst', [self.type_, self.index], indent)
+
 
 class GetAll(Nesting):
     def __init__(self, type_):
@@ -229,6 +297,9 @@ class GetAll(Nesting):
 
     def eval(self, value):
         return ' '.join(match_type(self.type_, value))
+
+    def to_string(self, indent, tab):
+        return op_to_string('GetAll', [self.type_], indent)
 
 
 class Type(Enum):
@@ -298,3 +369,23 @@ def regex_for_type(type_):
         return '[A-Za-z0-9]'
 
     raise ValueError('Unsupported type: {}'.format(type_))
+
+
+def op_to_string(name, raw_args, indent, recursive=False):
+    indent_str = ' ' * indent
+
+    if recursive:
+        args_str = ',\n'.join(raw_args)
+        return '{indent_str}{name}(\n{args_str}\n{indent_str})'.format(
+            indent_str=indent_str,
+            name=name,
+            args_str=args_str,
+        )
+
+    args = [repr(a) for a in raw_args]
+    args_str = ', '.join(args)
+    return '{indent_str}{name}({args_str})'.format(
+        indent_str=indent_str,
+        name=name,
+        args_str=args_str,
+    )

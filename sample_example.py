@@ -3,7 +3,6 @@ import logging
 import random
 
 from sample_program import sample_program
-from to_string import to_string
 import operators as op
 
 
@@ -63,6 +62,6 @@ def sample_example(
                     num_empty,
                     num_exception,
                 )
-                LOGGER.debug(to_string(program))
+                LOGGER.debug(program)
                 num_discarded += 1
                 break
