@@ -334,7 +334,7 @@ class TestEvaluate(TestCase):
             bound2=op.Boundary.START,
         )
         program = op.Concat(
-            op.Apply(op.GetToken(op.Type.WORD, -1), get_span),
+            op.Compose(op.GetToken(op.Type.WORD, -1), get_span),
             op.GetToken(op.Type.NUMBER, -5),
             op.GetAll(op.Type.PROP_CASE),
             op.SubStr(-24, -14),
@@ -386,7 +386,7 @@ class TestEvaluate(TestCase):
             index2=5,
             bound2=op.Boundary.START,
         )
-        program = op.Apply(op.GetToken(op.Type.ALL_CAPS, -2), get_span)
+        program = op.Compose(op.GetToken(op.Type.ALL_CAPS, -2), get_span)
 
         self.assertEqual(
             'W',

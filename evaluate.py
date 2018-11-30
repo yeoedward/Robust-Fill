@@ -10,7 +10,7 @@ def evaluate(exp, value):
             for e in exp.expressions
         ])
 
-    if isinstance(exp, op.Apply):
+    if isinstance(exp, op.Compose):
         return evaluate(
             exp.nesting,
             evaluate(exp.nesting_or_substring, value),

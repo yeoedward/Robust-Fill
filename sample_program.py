@@ -20,7 +20,7 @@ def sample_expression():
     return sample_from(
         sample_substring,
         sample_nesting,
-        sample_Apply,
+        sample_Compose,
         sample_ConstStr,
     )
 
@@ -45,13 +45,13 @@ def sample_nesting():
     )
 
 
-def sample_Apply():
+def sample_Compose():
     nesting = sample_nesting()
     nesting_or_substring = sample_from(
         sample_nesting,
         sample_substring,
     )
-    return op.Apply(nesting, nesting_or_substring)
+    return op.Compose(nesting, nesting_or_substring)
 
 
 def sample_ConstStr():

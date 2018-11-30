@@ -9,7 +9,7 @@ def to_string(exp, indent=0, tab=4):
         ]
         return op_to_string('Concat', sub_exps, indent, recursive=True)
 
-    if isinstance(exp, op.Apply):
+    if isinstance(exp, op.Compose):
         new_indent = indent + tab
         nesting = to_string(exp.nesting, indent=new_indent, tab=tab)
         nesting_or_substring = to_string(
@@ -18,7 +18,7 @@ def to_string(exp, indent=0, tab=4):
             tab=tab,
         )
         return op_to_string(
-            'Apply',
+            'Compose',
             [nesting, nesting_or_substring],
             indent,
             recursive=True)

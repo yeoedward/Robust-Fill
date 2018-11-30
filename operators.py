@@ -32,7 +32,7 @@ class Nesting(Expression):
     pass
 
 
-class Apply(Nesting):
+class Compose(Nesting):
     def __init__(self, nesting, nesting_or_substring):
         self.nesting = nesting
         self.nesting_or_substring = nesting_or_substring
