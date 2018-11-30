@@ -1,2 +1,0 @@
-IndexError -- tried as much as possible to have operators fail gracefully
-when the index is out-of-bounds. Notable exceptions are GetToken and GetFirst.
