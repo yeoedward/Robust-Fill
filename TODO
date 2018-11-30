@@ -1,6 +1,3 @@
-Generation of examples given program
-  Use heuristics mentioned in paper
-
 Add minibatching
 Train using subset of DSL
 
