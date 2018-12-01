@@ -38,22 +38,7 @@ class RobustFill(nn.Module):
         )
         self.linear = nn.Linear(hidden_size, program_size)
 
-    def _one_hot(self, index):
-        return (
-            torch.zeros(1, self.string_size)
-            .scatter_(1, torch.LongTensor([[index]]), 1)
-        )
-
     def forward(self, input_sequence, output_sequence):
-        input_sequence = [
-            self._one_hot(index)
-            for index in input_sequence
-        ]
-        output_sequence = [
-            self._one_hot(index)
-            for index in output_sequence
-        ]
-
         hidden = None
         for c in input_sequence:
             _, hidden = self.input_lstm(c.view(1, 1, -1), hidden)
@@ -79,16 +64,31 @@ def generate_program():
     return [p]
 
 
-def generate_data(program):
+def one_hot(index, string_size):
+    return (
+        torch.zeros(1, 1, string_size)
+        .scatter_(2, torch.LongTensor([[[index]]]), 1)
+    )
+
+
+def generate_data(program, string_size):
     input_sequence = [random.randint(0, 1)]
 
     if program[0] == 0:
-        return input_sequence, input_sequence
-
+        output_sequence = input_sequence
     if program[0] == 1:
-        return input_sequence, input_sequence * 2
+        output_sequence = input_sequence * 2
 
-    return None
+    input_sequence = torch.cat([
+        one_hot(index, string_size=string_size)
+        for index in input_sequence
+    ])
+    output_sequence = torch.cat([
+        one_hot(index, string_size=string_size)
+        for index in output_sequence
+    ])
+
+    return input_sequence, output_sequence
 
 
 def main():
@@ -97,21 +97,22 @@ def main():
 
     checkpoint_name = './checkpoint.pth'
 
+    string_size = 2
     robust_fill = RobustFill(
-        string_size=2,
+        string_size=string_size,
         hidden_size=8,
         program_size=2,
         num_lstm_layers=1,
         program_length=1,
     )
-    optimizer = optim.SGD(robust_fill.parameters(), lr=0.001)
+    optimizer = optim.SGD(robust_fill.parameters(), lr=0.01)
 
     example_idx = 0
     while True:
         optimizer.zero_grad()
 
         program = generate_program()
-        input_sequence, output_sequence = generate_data(program)
+        input_sequence, output_sequence = generate_data(program, string_size)
         program_sequence = robust_fill(input_sequence, output_sequence)
         loss = F.nll_loss(
             F.log_softmax(torch.cat(program_sequence), dim=1),
