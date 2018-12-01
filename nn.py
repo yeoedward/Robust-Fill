@@ -54,14 +54,13 @@ class RobustFill(nn.Module):
                 hidden,
             )
             program_embedding = self.linear(hidden[0][-1, :, :])
-            program_sequence.append(torch.squeeze(program_embedding, dim=1))
+            program_sequence.append(program_embedding)
 
         return program_sequence
 
 
-def generate_program():
-    p = random.randint(0, 1)
-    return [p]
+def generate_program(batch_size):
+    return [[random.randint(0, 1)] for _ in range(batch_size)]
 
 
 def one_hot(index, string_size):
@@ -71,24 +70,26 @@ def one_hot(index, string_size):
     )
 
 
-def generate_data(program, string_size):
-    input_sequence = [random.randint(0, 1)]
+def generate_data(program_batch, string_size):
+    inputs, outputs = [], []
+    for program in program_batch:
+        input_sequence = [random.randint(0, 1)]
 
-    if program[0] == 0:
-        output_sequence = input_sequence
-    if program[0] == 1:
-        output_sequence = input_sequence * 2
+        if program[0] == 0:
+            output_sequence = input_sequence
+        if program[0] == 1:
+            output_sequence = input_sequence * 2
 
-    input_sequence = torch.cat([
-        one_hot(index, string_size=string_size)
-        for index in input_sequence
-    ])
-    output_sequence = torch.cat([
-        one_hot(index, string_size=string_size)
-        for index in output_sequence
-    ])
+        inputs.append(torch.cat([
+            one_hot(index, string_size=string_size)
+            for index in input_sequence
+        ]))
+        outputs.append(torch.cat([
+            one_hot(index, string_size=string_size)
+            for index in output_sequence
+        ]))
 
-    return input_sequence, output_sequence
+    return torch.cat(inputs, dim=1), torch.cat(outputs, dim=1)
 
 
 def main():
@@ -111,12 +112,13 @@ def main():
     while True:
         optimizer.zero_grad()
 
-        program = generate_program()
+        program = generate_program(batch_size=1)
         input_sequence, output_sequence = generate_data(program, string_size)
         program_sequence = robust_fill(input_sequence, output_sequence)
         loss = F.nll_loss(
             F.log_softmax(torch.cat(program_sequence), dim=1),
-            torch.LongTensor(program),
+            # TODO: Generalize to multi-length programs
+            torch.LongTensor([p[0] for p in program]),
         )
 
         loss.backward()
