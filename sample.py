@@ -44,7 +44,9 @@ def sample_example(
 
                 if len(transformed) == 0:
                     num_empty += 1
-                if num_empty < max_empty_strings:
+                    if num_empty <= max_empty_strings:
+                        sampled_strings.append((string, transformed))
+                else:
                     sampled_strings.append((string, transformed))
 
             except IndexError:
