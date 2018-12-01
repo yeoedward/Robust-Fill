@@ -1,6 +1,7 @@
 import pprint as pp
 import random
 
+from torch.nn.utils.rnn import pack_sequence
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -41,8 +42,8 @@ class RobustFill(nn.Module):
     # TODO: Replace with sparse embedding
     def _one_hot(self, index):
         return (
-            torch.zeros(1, 1, self.string_size)
-            .scatter_(2, torch.LongTensor([[[index]]]), 1)
+            torch.zeros(1, self.string_size)
+            .scatter_(1, torch.LongTensor([[index]]), 1)
         )
 
     def _embed(self, sequence):
@@ -57,25 +58,53 @@ class RobustFill(nn.Module):
             for sequence in sequence_batch
         ]
 
+    @staticmethod
+    def _sort_and_pack(sequence_batch):
+        sorted_indices = sorted(
+            range(len(sequence_batch)),
+            key=lambda i: sequence_batch[i].shape[0],
+            reverse=True,
+        )
+        packed = pack_sequence([sequence_batch[i] for i in sorted_indices])
+        return packed, sorted_indices
+
+    @staticmethod
+    def _sort(hidden, sorted_indices):
+        sorted_hn = hidden[0][:, sorted_indices, :]
+        sorted_cn = hidden[0][:, sorted_indices, :]
+        return sorted_hn, sorted_cn
+
+    @staticmethod
+    def _unsort(hidden, sorted_indices):
+        unsorted_indices = [None] * len(sorted_indices)
+        for i, original_idx in enumerate(sorted_indices):
+            unsorted_indices[original_idx] = i
+
+        unsorted_hn = hidden[0][:, unsorted_indices, :]
+        unsorted_cn = hidden[1][:, unsorted_indices, :]
+
+        return unsorted_hn, unsorted_cn
+
     def forward(self, input_batch, output_batch):
         input_batch = self._embed_batch(input_batch)
         output_batch = self._embed_batch(output_batch)
 
-        input_sequence = input_batch[0]
-        output_sequence = output_batch[0]
+        input_packed, input_indices = RobustFill._sort_and_pack(input_batch)
+        output_packed, output_indices = RobustFill._sort_and_pack(output_batch)
 
         hidden = None
-        for c in input_sequence:
-            _, hidden = self.input_lstm(c.view(1, 1, -1), hidden)
+        _, hidden = self.input_lstm(input_packed, hidden)
+        hidden = RobustFill._unsort(hidden, input_indices)
+        hidden = RobustFill._sort(hidden, output_indices)
 
-        for c in output_sequence:
-            _, hidden = self.output_lstm(c.view(1, 1, -1), hidden)
+        _, hidden = self.output_lstm(output_packed, hidden)
+        hidden = RobustFill._unsort(hidden, output_indices)
 
         program_sequence = []
-        previous_hidden = hidden[0][-1, :, :]
+        previous_hidden = torch.unsqueeze(hidden[0][-1, :, :], dim=0)
         for _ in range(self.program_length):
             _, hidden = self.program_lstm(
-                previous_hidden.view(1, 1, -1),
+                previous_hidden,
                 hidden,
             )
             program_embedding = self.linear(hidden[0][-1, :, :])
@@ -85,7 +114,7 @@ class RobustFill(nn.Module):
 
 
 def generate_program(batch_size):
-    return [[random.randint(0, 1)] for _ in range(batch_size)]
+    return [random.randint(0, 1) for _ in range(batch_size)]
 
 
 def generate_data(program_batch, string_size):
@@ -93,9 +122,9 @@ def generate_data(program_batch, string_size):
     for program in program_batch:
         input_sequence = [random.randint(0, 1)]
 
-        if program[0] == 0:
+        if program == 0:
             output_sequence = input_sequence
-        elif program[0] == 1:
+        elif program == 1:
             output_sequence = input_sequence * 2
         else:
             raise ValueError('Invalid program {}'.format(program))
@@ -126,13 +155,12 @@ def main():
     while True:
         optimizer.zero_grad()
 
-        program = generate_program(batch_size=1)
-        input_batch, output_batch = generate_data(program, string_size)
+        program_batch = generate_program(batch_size=32)
+        input_batch, output_batch = generate_data(program_batch, string_size)
         program_sequence = robust_fill(input_batch, output_batch)
         loss = F.nll_loss(
             F.log_softmax(torch.cat(program_sequence), dim=1),
-            # TODO: Generalize to multi-length programs
-            torch.LongTensor([p[0] for p in program]),
+            torch.LongTensor(program_batch),
         )
 
         loss.backward()
@@ -140,11 +168,12 @@ def main():
 
         if example_idx % 100 == 0:
             print('Loss: {}'.format(loss))
-            print(input_batch)
-            print(output_batch)
-            print(program)
+            print_batch_limit = 3
+            print(input_batch[:print_batch_limit])
+            print(output_batch[:print_batch_limit])
+            print(program_batch[:print_batch_limit])
             pp.pprint([
-                F.softmax(p, dim=1)
+                F.softmax(p, dim=1)[:print_batch_limit]
                 for p in program_sequence
             ])
             print('Checkpointing at example {}'.format(example_idx))
