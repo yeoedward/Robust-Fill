@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from string import ascii_letters, digits, punctuation, whitespace
+from string import ascii_letters, digits, whitespace
 import re
 
 
@@ -8,7 +8,9 @@ import re
 POSITION = [-100, 100]
 # 0 is intentionally missing
 INDEX = [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5]
-DELIMITER = punctuation + whitespace
+# Picking the first few for convenience
+# TODO: Might want to change this later
+DELIMITER = '&,.?!@()[]%{}/:;$#' + whitespace
 # Should this be same as Type.CHAR?
 CHARACTER = ''.join([ascii_letters, digits, DELIMITER])
 
