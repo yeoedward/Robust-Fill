@@ -67,10 +67,17 @@ def build_token_tables():
     for character in op.CHARACTER:
         token_op_table.append(character)
 
-    op_token_table = {
-        op: token
+    token_op_table = {
+        token: op
         for token, op in enumerate(token_op_table)
     }
+
+    op_token_table = {
+        op: token
+        for token, op in token_op_table.items()
+    }
+
+    assert len(token_op_table) == len(op_token_table)
 
     return TokenTables(
         token_op_table=token_op_table,
