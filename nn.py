@@ -12,23 +12,23 @@ class RobustFill(nn.Module):
     def __init__(
             self,
             string_size,
+            string_embedding_size,
             hidden_size,
             program_size,
             num_lstm_layers,
             program_length):
         super().__init__()
 
-        self.string_size = string_size
-        self.num_lstm_layers = num_lstm_layers
         self.program_length = program_length
 
+        self.embedding = nn.Embedding(string_size, string_embedding_size)
         self.input_lstm = nn.LSTM(
-            input_size=string_size,
+            input_size=string_embedding_size,
             hidden_size=hidden_size,
             num_layers=num_lstm_layers,
         )
         self.output_lstm = nn.LSTM(
-            input_size=string_size,
+            input_size=string_embedding_size,
             hidden_size=hidden_size,
             num_layers=num_lstm_layers,
         )
@@ -39,22 +39,9 @@ class RobustFill(nn.Module):
         )
         self.linear = nn.Linear(hidden_size, program_size)
 
-    # TODO: Replace with sparse embedding
-    def _one_hot(self, index):
-        return (
-            torch.zeros(1, self.string_size)
-            .scatter_(1, torch.LongTensor([[index]]), 1)
-        )
-
-    def _embed(self, sequence):
-        return torch.cat([
-            self._one_hot(index)
-            for index in sequence
-        ])
-
     def _embed_batch(self, sequence_batch):
         return [
-            self._embed(sequence)
+            self.embedding(torch.LongTensor(sequence))
             for sequence in sequence_batch
         ]
 
@@ -122,7 +109,7 @@ def generate_program(batch_size):
 def generate_data(program_batch, string_size):
     input_batch, output_batch = [], []
     for program in program_batch:
-        input_sequence = [random.randint(0, 1)]
+        input_sequence = [random.randint(0, string_size-1)]
 
         if program == 0:
             output_sequence = input_sequence
@@ -137,15 +124,23 @@ def generate_data(program_batch, string_size):
     return input_batch, output_batch
 
 
+def one_hot(self, index, size):
+    return (
+        torch.zeros(1, size)
+        .scatter_(1, torch.LongTensor([[index]]), 1)
+    )
+
+
 def main():
     torch.manual_seed(1337)
     random.seed(420)
 
     checkpoint_name = './checkpoint.pth'
 
-    string_size = 2
+    string_size = 3
     robust_fill = RobustFill(
         string_size=string_size,
+        string_embedding_size=2,
         hidden_size=8,
         program_size=2,
         num_lstm_layers=1,
