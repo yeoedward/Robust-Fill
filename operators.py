@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from enum import Enum
+from functools import reduce
 from string import ascii_letters, digits, whitespace
 import re
 
@@ -27,6 +28,10 @@ class DSL(ABC):
     def __repr__(self):
         return self.to_string(indent=0, tab=4)
 
+    @abstractmethod
+    def to_tokens(self, op_token_table):
+        raise NotImplementedError
+
 
 class Program(DSL):
     pass
@@ -48,6 +53,16 @@ class Concat(Program):
             for e in self.expressions
         ]
         return op_to_string('Concat', sub_exps, indent, recursive=True)
+
+    def to_tokens(self, op_token_table):
+        sub_tokens = [
+            e.to_tokens(op_token_table)
+            for e in self.expressions
+        ]
+        return reduce(
+            lambda a, b: a + [op_token_table[self.__class__]] + b,
+            sub_tokens,
+        ) + [op_token_table['EOS']]
 
 
 class Expression(DSL):
@@ -85,6 +100,10 @@ class Compose(Nesting):
             indent,
             recursive=True)
 
+    def to_tokens(self, op_token_table):
+        return (self.nesting.to_tokens(op_token_table)
+                + self.nesting_or_substring.to_tokens(op_token_table))
+
 
 class ConstStr(Expression):
     def __init__(self, char):
@@ -95,6 +114,9 @@ class ConstStr(Expression):
 
     def to_string(self, indent, tab):
         return op_to_string('ConstStr', [self.char], indent)
+
+    def to_tokens(self, op_token_table):
+        return [op_token_table[self.__class__], op_token_table[self.char]]
 
 
 class SubStr(Substring):
@@ -127,6 +149,13 @@ class SubStr(Substring):
 
     def to_string(self, indent, tab):
         return op_to_string('SubStr', [self.pos1, self.pos2], indent)
+
+    def to_tokens(self, op_token_table):
+        return [
+            op_token_table[self.__class__],
+            op_token_table[self.pos1],
+            op_token_table[self.pos2],
+        ]
 
 
 class GetSpan(Substring):
@@ -184,6 +213,20 @@ class GetSpan(Substring):
             indent,
         )
 
+    def to_tokens(self, op_token_table):
+        return [
+            op_token_table[elem]
+            for elem in [
+                self.__class__,
+                self.dsl_regex1,
+                self.index1,
+                self.bound1,
+                self.dsl_regex2,
+                self.index2,
+                self.bound2,
+            ]
+        ]
+
 
 class GetToken(Nesting):
     def __init__(self, type_, index):
@@ -200,6 +243,9 @@ class GetToken(Nesting):
 
     def to_string(self, indent, tab):
         return op_to_string('GetToken', [self.type_, self.index], indent)
+
+    def to_tokens(self, op_token_table):
+        return [op_token_table[(self.__class__, self.type_, self.index)]]
 
 
 class ToCase(Nesting):
@@ -221,6 +267,9 @@ class ToCase(Nesting):
     def to_string(self, indent, tab):
         return op_to_string('ToCase', [self.case], indent)
 
+    def to_tokens(self, op_token_table):
+        return [op_token_table[(self.__class__, self.case)]]
+
 
 class Replace(Nesting):
     def __init__(self, delim1, delim2):
@@ -233,6 +282,9 @@ class Replace(Nesting):
     def to_string(self, indent, tab):
         return op_to_string('Replace', [self.delim1, self.delim2], indent)
 
+    def to_tokens(self, op_token_table):
+        return [op_token_table[(self.__class__, self.delim1, self.delim2)]]
+
 
 class Trim(Nesting):
     def eval(self, value):
@@ -240,6 +292,9 @@ class Trim(Nesting):
 
     def to_string(self, indent, tab):
         return op_to_string('Trim', [], indent)
+
+    def to_tokens(self, op_token_table):
+        return [op_token_table[self.__class__]]
 
 
 class GetUpto(Nesting):
@@ -258,6 +313,9 @@ class GetUpto(Nesting):
     def to_string(self, indent, tab):
         return op_to_string('GetUpto', [self.dsl_regex], indent)
 
+    def to_tokens(self, op_token_table):
+        return [op_token_table[(self.__class__, self.dsl_regex)]]
+
 
 class GetFrom(Nesting):
     def __init__(self, dsl_regex):
@@ -274,6 +332,9 @@ class GetFrom(Nesting):
 
     def to_string(self, indent, tab):
         return op_to_string('GetFrom', [self.dsl_regex], indent)
+
+    def to_tokens(self, op_token_table):
+        return [op_token_table[(self.__class__, self.dsl_regex)]]
 
 
 class GetFirst(Nesting):
@@ -292,6 +353,9 @@ class GetFirst(Nesting):
     def to_string(self, indent, tab):
         return op_to_string('GetFirst', [self.type_, self.index], indent)
 
+    def to_tokens(self, op_token_table):
+        return [op_token_table[(self.__class__, self.type_, self.index)]]
+
 
 class GetAll(Nesting):
     def __init__(self, type_):
@@ -302,6 +366,9 @@ class GetAll(Nesting):
 
     def to_string(self, indent, tab):
         return op_to_string('GetAll', [self.type_], indent)
+
+    def to_tokens(self, op_token_table):
+        return [op_token_table[(self.__class__, self.type_)]]
 
 
 class Type(Enum):
