@@ -85,20 +85,22 @@ class RobustFill(nn.Module):
 
         return unsorted_hn, unsorted_cn
 
+    @staticmethod
+    def _apply_lstm(lstm, sequence_batch, hidden):
+        packed, sorted_indices = RobustFill._sort_and_pack(sequence_batch)
+        sorted_hidden = (
+            None if hidden is None
+            else RobustFill._sort(hidden, sorted_indices)
+        )
+        _, output_hidden = lstm(packed, sorted_hidden)
+        return RobustFill._unsort(output_hidden, sorted_indices)
+
     def forward(self, input_batch, output_batch):
         input_batch = self._embed_batch(input_batch)
         output_batch = self._embed_batch(output_batch)
 
-        input_packed, input_indices = RobustFill._sort_and_pack(input_batch)
-        output_packed, output_indices = RobustFill._sort_and_pack(output_batch)
-
-        hidden = None
-        _, hidden = self.input_lstm(input_packed, hidden)
-        hidden = RobustFill._unsort(hidden, input_indices)
-        hidden = RobustFill._sort(hidden, output_indices)
-
-        _, hidden = self.output_lstm(output_packed, hidden)
-        hidden = RobustFill._unsort(hidden, output_indices)
+        hidden = RobustFill._apply_lstm(self.input_lstm, input_batch, None)
+        hidden = RobustFill._apply_lstm(self.output_lstm, output_batch, hidden)
 
         program_sequence = []
         previous_hidden = torch.unsqueeze(hidden[0][-1, :, :], dim=0)
