@@ -7,7 +7,7 @@ import operators as op
 EOS = 'EOS'
 TokenTables = namedtuple(
     'TokenTables',
-    ['token_op_table', 'op_token_table'],
+    ['token_op_table', 'op_token_table', 'string_token_table'],
 )
 
 
@@ -79,7 +79,13 @@ def build_token_tables():
 
     assert len(token_op_table) == len(op_token_table)
 
+    string_token_table = {
+        char: token
+        for token, char in enumerate(op.CHARACTER)
+    }
+
     return TokenTables(
         token_op_table=token_op_table,
         op_token_table=op_token_table,
+        string_token_table=string_token_table,
     )

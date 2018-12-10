@@ -1,6 +1,6 @@
 from unittest import TestCase
 
-from sample import sample_program
+from sample import sample_program, sample_string
 from tokens import build_token_tables
 
 
@@ -18,3 +18,7 @@ class TestTokens(TestCase):
         num_samples = 1000
         for _ in range(num_samples):
             sample_program(10).to_tokens(token_tables.op_token_table)
+            [
+                token_tables.string_token_table[char]
+                for char in sample_string(30)
+            ]

@@ -14,7 +14,7 @@ Example = namedtuple(
 )
 
 
-def sample_string(program, max_characters):
+def sample_string(max_characters):
     num_characters = random.randint(1, max_characters)
     random_string = ''.join(random.choices(op.CHARACTER, k=num_characters))
     return random_string
@@ -36,7 +36,7 @@ def sample_example(
         sampled_strings = []
 
         while True:
-            string = sample_string(program, max_characters)
+            string = sample_string(max_characters)
             try:
                 transformed = program.eval(string)
 
