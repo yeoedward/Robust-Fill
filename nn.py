@@ -37,7 +37,8 @@ class RobustFill(nn.Module):
             hidden_size=hidden_size,
             num_layers=num_lstm_layers,
         )
-        self.linear = nn.Linear(hidden_size, program_size)
+        self.max_pool_linear = nn.Linear(hidden_size, hidden_size)
+        self.softmax_linear = nn.Linear(hidden_size, program_size)
 
     def _embed_batch(self, sequence_batch):
         return [
@@ -73,7 +74,7 @@ class RobustFill(nn.Module):
         return unsorted_hn, unsorted_cn
 
     @staticmethod
-    def _apply_lstm(lstm, sequence_batch, hidden):
+    def _forward_lstm(lstm, sequence_batch, hidden):
         packed, sorted_indices = RobustFill._sort_and_pack(sequence_batch)
         sorted_hidden = (
             None if hidden is None
@@ -82,12 +83,21 @@ class RobustFill(nn.Module):
         _, output_hidden = lstm(packed, sorted_hidden)
         return RobustFill._unsort(output_hidden, sorted_indices)
 
-    def forward(self, input_batch, output_batch):
+    # Each arg is list (batch_size) of list (sequence_length) of token indices
+    def _forward_example(self, input_batch, output_batch):
         input_batch = self._embed_batch(input_batch)
         output_batch = self._embed_batch(output_batch)
 
-        hidden = RobustFill._apply_lstm(self.input_lstm, input_batch, None)
-        hidden = RobustFill._apply_lstm(self.output_lstm, output_batch, hidden)
+        hidden = RobustFill._forward_lstm(
+            self.input_lstm,
+            input_batch,
+            None,
+        )
+        hidden = RobustFill._forward_lstm(
+            self.output_lstm,
+            output_batch,
+            hidden,
+        )
 
         program_sequence = []
         previous_hidden = torch.unsqueeze(hidden[0][-1, :, :], dim=0)
@@ -96,10 +106,48 @@ class RobustFill(nn.Module):
                 previous_hidden,
                 hidden,
             )
-            program_embedding = self.linear(hidden[0][-1, :, :])
+            program_embedding = F.tanh(
+                self.max_pool_linear(hidden[0][-1, :, :]))
             program_sequence.append(program_embedding)
 
         return program_sequence
+
+    def forward(self, examples):
+        # TODO: Pass in multiple examples
+        examples = [examples]
+
+        # TODO: We can "explode" the examples as part of the batch for
+        # more parallelism
+
+        # List (num_examples) of list (sequence_length) of
+        # batch_size * hidden_size
+        program_example_sequence = [
+            # List (sequence_length) of batch_size * hidden_size
+            self._forward_example(input_batch, output_batch)
+            for input_batch, output_batch in examples
+        ]
+
+        program_sequence = []
+        for sequence_idx in range(self.program_length):
+            program_example = []
+            for example_idx in range(len(examples)):
+                # batch * hidden_size * 1
+                program_example.append(torch.unsqueeze(
+                    program_example_sequence[example_idx][sequence_idx],
+                    dim=2,
+                ))
+            program_sequence.append(torch.squeeze(
+                F.max_pool1d(
+                    torch.cat(program_example, dim=2),
+                    kernel_size=len(program_example),
+                ),
+                dim=2,
+            ))
+
+        return [
+            self.softmax_linear(p)
+            for p in program_sequence
+        ]
 
 
 def generate_program(batch_size):
@@ -154,7 +202,7 @@ def main():
 
         program_batch = generate_program(batch_size=32)
         input_batch, output_batch = generate_data(program_batch, string_size)
-        program_sequence = robust_fill(input_batch, output_batch)
+        program_sequence = robust_fill((input_batch, output_batch))
         loss = F.nll_loss(
             F.log_softmax(torch.cat(program_sequence), dim=1),
             torch.LongTensor(program_batch),
