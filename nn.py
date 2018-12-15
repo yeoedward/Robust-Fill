@@ -40,10 +40,12 @@ class RobustFill(nn.Module):
         self.max_pool_linear = nn.Linear(hidden_size, hidden_size)
         self.softmax_linear = nn.Linear(hidden_size, program_size)
 
-    def _embed_batch(self, sequence_batch):
+    def _embed_batch(self, batch):
+        # TODO: Assert same number of examples for entire batch
         return [
             self.embedding(torch.LongTensor(sequence))
-            for sequence in sequence_batch
+            for examples in batch
+            for sequence in examples
         ]
 
     @staticmethod
@@ -83,8 +85,11 @@ class RobustFill(nn.Module):
         _, output_hidden = lstm(packed, sorted_hidden)
         return RobustFill._unsort(output_hidden, sorted_indices)
 
-    # Each arg is list (batch_size) of list (sequence_length) of token indices
-    def _forward_example(self, input_batch, output_batch):
+    # Each arg is list (batch_size) of list (num_examples) of
+    # list (sequence_length) of token indices
+    def forward(self, input_batch, output_batch):
+        # TODO: Check dimensions of args
+        num_examples = len(input_batch[0])
         input_batch = self._embed_batch(input_batch)
         output_batch = self._embed_batch(output_batch)
 
@@ -102,72 +107,47 @@ class RobustFill(nn.Module):
         program_sequence = []
         previous_hidden = torch.unsqueeze(hidden[0][-1, :, :], dim=0)
         for _ in range(self.program_length):
-            _, hidden = self.program_lstm(
-                previous_hidden,
-                hidden,
+            _, hidden = self.program_lstm(previous_hidden, hidden)
+            unpooled = torch.tanh(self.max_pool_linear(hidden[0][-1, :, :]))
+            unpooled = (
+                unpooled
+                .view(-1, num_examples, unpooled.size()[1])
+                .permute(0, 2, 1)
             )
-            program_embedding = F.tanh(
-                self.max_pool_linear(hidden[0][-1, :, :]))
+            pooled = F.max_pool1d(unpooled, num_examples)
+            program_embedding = self.softmax_linear(pooled.squeeze(2))
+
             program_sequence.append(program_embedding)
 
         return program_sequence
-
-    def forward(self, examples):
-        # TODO: Pass in multiple examples
-        examples = [examples]
-
-        # TODO: We can "explode" the examples as part of the batch for
-        # more parallelism
-
-        # List (num_examples) of list (sequence_length) of
-        # batch_size * hidden_size
-        program_example_sequence = [
-            # List (sequence_length) of batch_size * hidden_size
-            self._forward_example(input_batch, output_batch)
-            for input_batch, output_batch in examples
-        ]
-
-        program_sequence = []
-        for sequence_idx in range(self.program_length):
-            program_example = []
-            for example_idx in range(len(examples)):
-                # batch * hidden_size * 1
-                program_example.append(torch.unsqueeze(
-                    program_example_sequence[example_idx][sequence_idx],
-                    dim=2,
-                ))
-            program_sequence.append(torch.squeeze(
-                F.max_pool1d(
-                    torch.cat(program_example, dim=2),
-                    kernel_size=len(program_example),
-                ),
-                dim=2,
-            ))
-
-        return [
-            self.softmax_linear(p)
-            for p in program_sequence
-        ]
 
 
 def generate_program(batch_size):
     return [random.randint(0, 1) for _ in range(batch_size)]
 
 
-def generate_data(program_batch, string_size):
+def generate_data(program_batch, num_examples, string_size):
+    # Both input_batch and output_batch are
+    # list (batch_size) of list (num_examples) of list (sequence_length)
+    # of token indices
     input_batch, output_batch = [], []
     for program in program_batch:
-        input_sequence = [random.randint(0, string_size-1)]
+        input_examples, output_examples = [], []
+        for _ in range(num_examples):
+            input_sequence = [random.randint(0, string_size-1)]
 
-        if program == 0:
-            output_sequence = input_sequence
-        elif program == 1:
-            output_sequence = input_sequence * 2
-        else:
-            raise ValueError('Invalid program {}'.format(program))
+            if program == 0:
+                output_sequence = input_sequence
+            elif program == 1:
+                output_sequence = input_sequence * 2
+            else:
+                raise ValueError('Invalid program {}'.format(program))
 
-        input_batch.append(input_sequence)
-        output_batch.append(output_sequence)
+            input_examples.append(input_sequence)
+            output_examples.append(output_sequence)
+
+        input_batch.append(input_examples)
+        output_batch.append(output_examples)
 
     return input_batch, output_batch
 
@@ -201,8 +181,13 @@ def main():
         optimizer.zero_grad()
 
         program_batch = generate_program(batch_size=32)
-        input_batch, output_batch = generate_data(program_batch, string_size)
-        program_sequence = robust_fill((input_batch, output_batch))
+        num_examples = 2
+        input_batch, output_batch = generate_data(
+            program_batch,
+            num_examples,
+            string_size,
+        )
+        program_sequence = robust_fill(input_batch, output_batch)
         loss = F.nll_loss(
             F.log_softmax(torch.cat(program_sequence), dim=1),
             torch.LongTensor(program_batch),

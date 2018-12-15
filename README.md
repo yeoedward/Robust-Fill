@@ -4,9 +4,10 @@ Original Paper: https://arxiv.org/pdf/1703.07469.pdf
 
 ## TODO
 
-- Embedding of characters and programs
+- Add assertions for nested input lists and tensor sizes
 - Add attention
-- Add support for multiple I/O examples
+- Variable length programs
+- Integrate neural net with operators
 - GPU
 - Beam search
 
