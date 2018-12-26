@@ -40,12 +40,32 @@ class RobustFill(nn.Module):
         self.max_pool_linear = nn.Linear(hidden_size, hidden_size)
         self.softmax_linear = nn.Linear(hidden_size, program_size)
 
+    @staticmethod
+    def _flatten_examples(raw_input_batch, raw_output_batch):
+        assert len(raw_input_batch) == len(raw_output_batch)
+
+        input_batch = []
+        output_batch = []
+        num_examples = None
+        for i in range(len(raw_input_batch)):
+            input_examples = raw_input_batch[i]
+            output_examples = raw_output_batch[i]
+            assert len(input_examples) == len(output_examples)
+
+            if num_examples is None:
+                num_examples = len(input_examples)
+            else:
+                assert num_examples == len(input_examples)
+
+            input_batch.extend(input_examples)
+            output_batch.extend(output_examples)
+
+        return input_batch, output_batch, num_examples
+
     def _embed_batch(self, batch):
-        # TODO: Assert same number of examples for entire batch
         return [
             self.embedding(torch.LongTensor(sequence))
-            for examples in batch
-            for sequence in examples
+            for sequence in batch
         ]
 
     @staticmethod
@@ -87,9 +107,11 @@ class RobustFill(nn.Module):
 
     # Each arg is list (batch_size) of list (num_examples) of
     # list (sequence_length) of token indices
-    def forward(self, input_batch, output_batch):
-        # TODO: Check dimensions of args
-        num_examples = len(input_batch[0])
+    def forward(self, raw_input_batch, raw_output_batch):
+        input_batch, output_batch, num_examples = RobustFill._flatten_examples(
+            raw_input_batch,
+            raw_output_batch,
+        )
         input_batch = self._embed_batch(input_batch)
         output_batch = self._embed_batch(output_batch)
 

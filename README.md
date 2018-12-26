@@ -4,7 +4,6 @@ Original Paper: https://arxiv.org/pdf/1703.07469.pdf
 
 ## TODO
 
-- Add assertions for nested input lists and tensor sizes
 - Add attention
 - Variable length programs
 - Integrate neural net with operators
