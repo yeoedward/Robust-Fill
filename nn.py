@@ -41,26 +41,28 @@ class RobustFill(nn.Module):
         self.softmax_linear = nn.Linear(hidden_size, program_size)
 
     @staticmethod
-    def _flatten_examples(raw_input_batch, raw_output_batch):
-        assert len(raw_input_batch) == len(raw_output_batch)
+    def _check_num_examples(batch):
+        assert len(batch) > 0
+        num_examples = len(batch[0])
+        assert all([
+            len(examples) == num_examples
+            for examples in batch
+        ])
+        return num_examples
 
-        input_batch = []
-        output_batch = []
-        num_examples = None
-        for i in range(len(raw_input_batch)):
-            input_examples = raw_input_batch[i]
-            output_examples = raw_output_batch[i]
-            assert len(input_examples) == len(output_examples)
-
-            if num_examples is None:
-                num_examples = len(input_examples)
-            else:
-                assert num_examples == len(input_examples)
-
-            input_batch.extend(input_examples)
-            output_batch.extend(output_examples)
-
-        return input_batch, output_batch, num_examples
+    @staticmethod
+    def _split_flatten_examples(batch):
+        input_batch = [
+            input_sequence
+            for examples in batch
+            for input_sequence, _ in examples
+        ]
+        output_batch = [
+            output_sequence
+            for examples in batch
+            for _, output_sequence in examples
+        ]
+        return input_batch, output_batch
 
     def _embed_batch(self, batch):
         return [
@@ -105,13 +107,13 @@ class RobustFill(nn.Module):
         _, output_hidden = lstm(packed, sorted_hidden)
         return RobustFill._unsort(output_hidden, sorted_indices)
 
-    # Each arg is list (batch_size) of list (num_examples) of
-    # list (sequence_length) of token indices
-    def forward(self, raw_input_batch, raw_output_batch):
-        input_batch, output_batch, num_examples = RobustFill._flatten_examples(
-            raw_input_batch,
-            raw_output_batch,
-        )
+    # Expects:
+    # list (batch_size) of tuples (input, output) of list (sequence_length)
+    # of token indices
+    def forward(self, batch):
+        num_examples = RobustFill._check_num_examples(batch)
+        input_batch, output_batch = RobustFill._split_flatten_examples(batch)
+
         input_batch = self._embed_batch(input_batch)
         output_batch = self._embed_batch(output_batch)
 
@@ -149,12 +151,12 @@ def generate_program(batch_size):
 
 
 def generate_data(program_batch, num_examples, string_size):
-    # Both input_batch and output_batch are
-    # list (batch_size) of list (num_examples) of list (sequence_length)
+    # Batch is a:
+    # list (batch_size) of tuples (input, output) of list (sequence_length)
     # of token indices
-    input_batch, output_batch = [], []
+    batch = []
     for program in program_batch:
-        input_examples, output_examples = [], []
+        examples = []
         for _ in range(num_examples):
             input_sequence = [random.randint(0, string_size-1)]
 
@@ -165,13 +167,11 @@ def generate_data(program_batch, num_examples, string_size):
             else:
                 raise ValueError('Invalid program {}'.format(program))
 
-            input_examples.append(input_sequence)
-            output_examples.append(output_sequence)
+            examples.append((input_sequence, output_sequence))
 
-        input_batch.append(input_examples)
-        output_batch.append(output_examples)
+        batch.append(examples)
 
-    return input_batch, output_batch
+    return batch
 
 
 def one_hot(self, index, size):
@@ -204,12 +204,8 @@ def main():
 
         program_batch = generate_program(batch_size=32)
         num_examples = 2
-        input_batch, output_batch = generate_data(
-            program_batch,
-            num_examples,
-            string_size,
-        )
-        program_sequence = robust_fill(input_batch, output_batch)
+        data_batch = generate_data(program_batch, num_examples, string_size)
+        program_sequence = robust_fill(data_batch)
         loss = F.nll_loss(
             F.log_softmax(torch.cat(program_sequence), dim=1),
             torch.LongTensor(program_batch),
@@ -221,8 +217,7 @@ def main():
         if example_idx % 100 == 0:
             print('Loss: {}'.format(loss))
             print_batch_limit = 3
-            print(input_batch[:print_batch_limit])
-            print(output_batch[:print_batch_limit])
+            pp.pprint(data_batch[:print_batch_limit])
             print(program_batch[:print_batch_limit])
             pp.pprint([
                 F.softmax(p, dim=1)[:print_batch_limit]
