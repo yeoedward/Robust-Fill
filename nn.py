@@ -83,7 +83,7 @@ class RobustFill(nn.Module):
     @staticmethod
     def _sort(hidden, sorted_indices):
         sorted_hn = hidden[0][:, sorted_indices, :]
-        sorted_cn = hidden[0][:, sorted_indices, :]
+        sorted_cn = hidden[1][:, sorted_indices, :]
         return sorted_hn, sorted_cn
 
     @staticmethod
