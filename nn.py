@@ -97,6 +97,31 @@ class RobustFill(nn.Module):
 
         return unsorted_hn, unsorted_cn
 
+    # TODO: Return all hidden states for attention
+    @staticmethod
+    def _apply_lstm(lstm, packed, hidden):
+        final_hn = []
+        final_cn = []
+        pos = 0
+        for size in packed.batch_sizes:
+            timestep_data = packed.data[pos:pos+size, :]
+
+            if hidden is not None and hidden[0].size()[1] > size:
+                hn, cn = hidden
+                hidden = hn[:, :size, :], cn[:, :size, :]
+                final_hn.append(hn[:, size:, :])
+                final_cn.append(cn[:, size:, :])
+
+            _, hidden = lstm(timestep_data.unsqueeze(0), hidden)
+
+            pos += size
+
+        hn, cn = hidden
+        final_hn.append(hn)
+        final_cn.append(cn)
+
+        return torch.cat(final_hn[::-1], 1), torch.cat(final_cn[::-1], 1)
+
     @staticmethod
     def _forward_lstm(lstm, sequence_batch, hidden):
         packed, sorted_indices = RobustFill._sort_and_pack(sequence_batch)
@@ -105,6 +130,12 @@ class RobustFill(nn.Module):
             else RobustFill._sort(hidden, sorted_indices)
         )
         _, output_hidden = lstm(packed, sorted_hidden)
+
+        # TODO: Move this into unit tests
+        output_hidden2 = RobustFill._apply_lstm(lstm, packed, sorted_hidden)
+        assert torch.eq(output_hidden[0], output_hidden2[0]).all()
+        assert torch.eq(output_hidden[1], output_hidden2[1]).all()
+
         return RobustFill._unsort(output_hidden, sorted_indices)
 
     # Expects:
