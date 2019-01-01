@@ -1,7 +1,7 @@
 import pprint as pp
 import random
 
-from torch.nn.utils.rnn import pack_sequence
+from torch.nn.utils.rnn import pack_sequence, pad_packed_sequence, pad_sequence
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -97,9 +97,9 @@ class RobustFill(nn.Module):
 
         return unsorted_hn, unsorted_cn
 
-    # TODO: Return all hidden states for attention
     @staticmethod
     def _apply_lstm(lstm, packed, hidden):
+        all_hn = []
         final_hn = []
         final_cn = []
         pos = 0
@@ -114,13 +114,21 @@ class RobustFill(nn.Module):
 
             _, hidden = lstm(timestep_data.unsqueeze(0), hidden)
 
+            all_hn.append(hidden[0].squeeze(0))
             pos += size
 
-        hn, cn = hidden
-        final_hn.append(hn)
-        final_cn.append(cn)
+        final_hn.append(hidden[0])
+        final_cn.append(hidden[1])
 
-        return torch.cat(final_hn[::-1], 1), torch.cat(final_cn[::-1], 1)
+        final_hidden = (torch.cat(final_hn[::-1], 1),
+                        torch.cat(final_cn[::-1], 1))
+        # all_hn is a list (sequence_length) of
+        # tensors (batch_size for timestep * hidden_size).
+        # So if we set batch_first=True, we get back tensor
+        # (sequence_length * batch_size * hidden_size)
+        all_hidden = pad_sequence(all_hn, batch_first=True)
+
+        return all_hidden, final_hidden
 
     @staticmethod
     def _forward_lstm(lstm, sequence_batch, hidden):
@@ -129,14 +137,19 @@ class RobustFill(nn.Module):
             None if hidden is None
             else RobustFill._sort(hidden, sorted_indices)
         )
-        _, output_hidden = lstm(packed, sorted_hidden)
+        all_hidden, final_hidden = lstm(packed, sorted_hidden)
 
         # TODO: Move this into unit tests
-        output_hidden2 = RobustFill._apply_lstm(lstm, packed, sorted_hidden)
-        assert torch.eq(output_hidden[0], output_hidden2[0]).all()
-        assert torch.eq(output_hidden[1], output_hidden2[1]).all()
+        all_hidden2, final_hidden2 = RobustFill._apply_lstm(
+            lstm,
+            packed,
+            sorted_hidden,
+        )
+        assert torch.eq(final_hidden[0], final_hidden2[0]).all()
+        assert torch.eq(final_hidden[1], final_hidden2[1]).all()
+        assert torch.eq(pad_packed_sequence(all_hidden)[0], all_hidden2).all()
 
-        return RobustFill._unsort(output_hidden, sorted_indices)
+        return RobustFill._unsort(final_hidden, sorted_indices)
 
     # Expects:
     # list (batch_size) of tuples (input, output) of list (sequence_length)
