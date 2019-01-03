@@ -70,90 +70,6 @@ class RobustFill(nn.Module):
             for sequence in batch
         ]
 
-    @staticmethod
-    def _sort_and_pack(sequence_batch):
-        sorted_indices = sorted(
-            range(len(sequence_batch)),
-            key=lambda i: sequence_batch[i].shape[0],
-            reverse=True,
-        )
-        packed = pack_sequence([sequence_batch[i] for i in sorted_indices])
-        return packed, sorted_indices
-
-    @staticmethod
-    def _sort(hidden, sorted_indices):
-        sorted_hn = hidden[0][:, sorted_indices, :]
-        sorted_cn = hidden[1][:, sorted_indices, :]
-        return sorted_hn, sorted_cn
-
-    @staticmethod
-    def _unsort(hidden, sorted_indices):
-        unsorted_indices = [None] * len(sorted_indices)
-        for i, original_idx in enumerate(sorted_indices):
-            unsorted_indices[original_idx] = i
-
-        unsorted_hn = hidden[0][:, unsorted_indices, :]
-        unsorted_cn = hidden[1][:, unsorted_indices, :]
-
-        return unsorted_hn, unsorted_cn
-
-    @staticmethod
-    def _apply_lstm(lstm, packed, original_hidden):
-        hidden = original_hidden
-
-        all_hn = []
-        final_hn = []
-        final_cn = []
-
-        pos = 0
-        for size in packed.batch_sizes:
-            timestep_data = packed.data[pos:pos+size, :]
-
-            if hidden is not None and hidden[0].size()[1] > size:
-                hn, cn = hidden
-                hidden = hn[:, :size, :], cn[:, :size, :]
-                final_hn.append(hn[:, size:, :])
-                final_cn.append(cn[:, size:, :])
-
-            _, hidden = lstm(timestep_data.unsqueeze(0), hidden)
-
-            all_hn.append(hidden[0].squeeze(0))
-            pos += size
-
-        final_hn.append(hidden[0])
-        final_cn.append(hidden[1])
-
-        final_hidden = (torch.cat(final_hn[::-1], 1),
-                        torch.cat(final_cn[::-1], 1))
-        # all_hn is a list (sequence_length) of
-        # tensors (batch_size for timestep * hidden_size).
-        # So if we set batch_first=True, we get back tensor
-        # (sequence_length * batch_size * hidden_size)
-        all_hidden = pad_sequence(all_hn, batch_first=True)
-
-        # TODO: Move this into unit tests
-        all_hidden2, final_hidden2 = lstm(packed, original_hidden)
-        assert torch.eq(final_hidden[0], final_hidden2[0]).all()
-        assert torch.eq(final_hidden[1], final_hidden2[1]).all()
-        assert torch.eq(all_hidden, pad_packed_sequence(all_hidden2)[0]).all()
-
-        return all_hidden, final_hidden
-
-    @staticmethod
-    def _forward_lstm(lstm, sequence_batch, hidden):
-        packed, sorted_indices = RobustFill._sort_and_pack(sequence_batch)
-        sorted_hidden = (
-            None if hidden is None
-            else RobustFill._sort(hidden, sorted_indices)
-        )
-        _, final_hidden = RobustFill._apply_lstm(
-            lstm,
-            packed,
-            sorted_hidden,
-        )
-
-        return RobustFill._unsort(final_hidden, sorted_indices)
-
     # Expects:
     # list (batch_size) of tuples (input, output) of list (sequence_length)
     # of token indices
@@ -164,12 +80,12 @@ class RobustFill(nn.Module):
         input_batch = self._embed_batch(input_batch)
         output_batch = self._embed_batch(output_batch)
 
-        hidden = RobustFill._forward_lstm(
+        hidden = forward_lstm(
             self.input_lstm,
             input_batch,
             None,
         )
-        hidden = RobustFill._forward_lstm(
+        hidden = forward_lstm(
             self.output_lstm,
             output_batch,
             hidden,
@@ -191,6 +107,90 @@ class RobustFill(nn.Module):
             program_sequence.append(program_embedding)
 
         return program_sequence
+
+
+def sort_and_pack(sequence_batch):
+    sorted_indices = sorted(
+        range(len(sequence_batch)),
+        key=lambda i: sequence_batch[i].shape[0],
+        reverse=True,
+    )
+    packed = pack_sequence([sequence_batch[i] for i in sorted_indices])
+    return packed, sorted_indices
+
+
+def sort(hidden, sorted_indices):
+    sorted_hn = hidden[0][:, sorted_indices, :]
+    sorted_cn = hidden[1][:, sorted_indices, :]
+    return sorted_hn, sorted_cn
+
+
+def unsort(hidden, sorted_indices):
+    unsorted_indices = [None] * len(sorted_indices)
+    for i, original_idx in enumerate(sorted_indices):
+        unsorted_indices[original_idx] = i
+
+    unsorted_hn = hidden[0][:, unsorted_indices, :]
+    unsorted_cn = hidden[1][:, unsorted_indices, :]
+
+    return unsorted_hn, unsorted_cn
+
+
+def apply_lstm(lstm, packed, original_hidden):
+    hidden = original_hidden
+
+    all_hn = []
+    final_hn = []
+    final_cn = []
+
+    pos = 0
+    for size in packed.batch_sizes:
+        timestep_data = packed.data[pos:pos+size, :]
+
+        if hidden is not None and hidden[0].size()[1] > size:
+            hn, cn = hidden
+            hidden = hn[:, :size, :], cn[:, :size, :]
+            final_hn.append(hn[:, size:, :])
+            final_cn.append(cn[:, size:, :])
+
+        _, hidden = lstm(timestep_data.unsqueeze(0), hidden)
+
+        all_hn.append(hidden[0].squeeze(0))
+        pos += size
+
+    final_hn.append(hidden[0])
+    final_cn.append(hidden[1])
+
+    final_hidden = (torch.cat(final_hn[::-1], 1),
+                    torch.cat(final_cn[::-1], 1))
+    # all_hn is a list (sequence_length) of
+    # tensors (batch_size for timestep * hidden_size).
+    # So if we set batch_first=True, we get back tensor
+    # (sequence_length * batch_size * hidden_size)
+    all_hidden = pad_sequence(all_hn, batch_first=True)
+
+    # TODO: Move this into unit tests
+    all_hidden2, final_hidden2 = lstm(packed, original_hidden)
+    assert torch.eq(final_hidden[0], final_hidden2[0]).all()
+    assert torch.eq(final_hidden[1], final_hidden2[1]).all()
+    assert torch.eq(all_hidden, pad_packed_sequence(all_hidden2)[0]).all()
+
+    return all_hidden, final_hidden
+
+
+def forward_lstm(lstm, sequence_batch, hidden):
+    packed, sorted_indices = sort_and_pack(sequence_batch)
+    sorted_hidden = (
+        None if hidden is None
+        else sort(hidden, sorted_indices)
+    )
+    _, final_hidden = apply_lstm(
+        lstm,
+        packed,
+        sorted_hidden,
+    )
+
+    return unsort(final_hidden, sorted_indices)
 
 
 def generate_program(batch_size):
