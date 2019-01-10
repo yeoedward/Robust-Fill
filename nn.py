@@ -95,34 +95,18 @@ class RobustFill(nn.Module):
         previous_hidden = torch.unsqueeze(hidden[0][-1, :, :], dim=0)
         for _ in range(self.program_length):
             _, hidden = self.program_lstm(previous_hidden, hidden)
-            unpooled = torch.tanh(self.max_pool_linear(hidden[0][-1, :, :]))
+            hidden_size = hidden[0].size()[2]
             unpooled = (
-                unpooled
-                .view(-1, num_examples, unpooled.size()[1])
+                torch.tanh(self.max_pool_linear(hidden[0][-1, :, :]))
+                .view(-1, num_examples, hidden_size)
                 .permute(0, 2, 1)
             )
-            pooled = F.max_pool1d(unpooled, num_examples)
-            program_embedding = self.softmax_linear(pooled.squeeze(2))
+            pooled = F.max_pool1d(unpooled, num_examples).squeeze(2)
+            program_embedding = self.softmax_linear(pooled)
 
             program_sequence.append(program_embedding)
 
         return program_sequence
-
-
-def sort_and_pack(sequence_batch):
-    sorted_indices = sorted(
-        range(len(sequence_batch)),
-        key=lambda i: sequence_batch[i].shape[0],
-        reverse=True,
-    )
-    packed = pack_sequence([sequence_batch[i] for i in sorted_indices])
-    return packed, sorted_indices
-
-
-def sort(hidden, sorted_indices):
-    sorted_hn = hidden[0][:, sorted_indices, :]
-    sorted_cn = hidden[1][:, sorted_indices, :]
-    return sorted_hn, sorted_cn
 
 
 class LuongAttention(nn.Module):
@@ -152,6 +136,22 @@ class LuongAttention(nn.Module):
             .squeeze(1)
         )
         return context
+
+
+def sort_and_pack(sequence_batch):
+    sorted_indices = sorted(
+        range(len(sequence_batch)),
+        key=lambda i: sequence_batch[i].shape[0],
+        reverse=True,
+    )
+    packed = pack_sequence([sequence_batch[i] for i in sorted_indices])
+    return packed, sorted_indices
+
+
+def sort(hidden, sorted_indices):
+    sorted_hn = hidden[0][:, sorted_indices, :]
+    sorted_cn = hidden[1][:, sorted_indices, :]
+    return sorted_hn, sorted_cn
 
 
 def unsort(hidden, sorted_indices):
