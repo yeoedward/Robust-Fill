@@ -125,6 +125,35 @@ def sort(hidden, sorted_indices):
     return sorted_hn, sorted_cn
 
 
+class LuongAttention(nn.Module):
+    def __init__(self, linear):
+        super().__init__()
+        self.linear = linear
+
+    def create(query_size):
+        return LuongAttention(nn.Linear(query_size, query_size))
+
+    # attended: (other sequence length x batch size x query size)
+    # Uses the "general" content-based function
+    def forward(self, query, attended):
+        # (batch size x query size)
+        key = self.linear(query)
+        # TODO: Use masked softmax
+        # (batch size x other sequence length)
+        align = F.softmax(
+            torch.matmul(attended.unsqueeze(2), key.unsqueeze(2))
+            .squeeze()
+            .transpose(1, 0),
+            dim=1,
+        )
+        # (batch_size x query size)
+        context = (
+            align.unsqueeze(1).bmm(attended.transpose(1, 0))
+            .squeeze(1)
+        )
+        return context
+
+
 def unsort(hidden, sorted_indices):
     unsorted_indices = [None] * len(sorted_indices)
     for i, original_idx in enumerate(sorted_indices):
@@ -164,9 +193,9 @@ def apply_lstm(lstm, packed, original_hidden):
     final_hidden = (torch.cat(final_hn[::-1], 1),
                     torch.cat(final_cn[::-1], 1))
     # all_hn is a list (sequence_length) of
-    # tensors (batch_size for timestep * hidden_size).
+    # tensors (batch_size for timestep x hidden_size).
     # So if we set batch_first=True, we get back tensor
-    # (sequence_length * batch_size * hidden_size)
+    # (sequence_length x batch_size x hidden_size)
     all_hidden = pad_sequence(all_hn, batch_first=True)
 
     # TODO: Move this into unit tests
