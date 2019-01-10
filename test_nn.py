@@ -14,25 +14,26 @@ class TestNN(TestCase):
         ])
         attended = torch.Tensor([
             [
-                [1, 2, 3],
-                [4, 5, 6],
+                [0.1, 0.2, 0.3],
+                [0.4, 0.5, 0.6],
             ],
             [
-                [7, 8, 9],
-                [9, 8, 7],
+                [0.7, 0.8, 0.9],
+                [0.9, 0.8, 0.7],
             ],
             [
-                [6, 5, 4],
-                [3, 2, 1],
+                [0.6, 0.5, 0.4],
+                [0.3, 0.2, 0.1],
             ],
         ])
+        sequence_lengths = torch.LongTensor([3, 3])
 
         attention = LuongAttention(lambda t: t)
-        context = attention(query, attended)
+        context = attention(query, attended, sequence_lengths)
 
         expected = torch.Tensor([
-            [7, 8, 9],
-            [9, 8, 7],
+            [0.6758598685, 0.7563887239, 0.8369175196],
+            [0.8917768598, 0.7950369716, 0.6982971430],
         ])
 
         self.assertEqual(expected.size(), context.size())

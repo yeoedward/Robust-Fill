@@ -117,18 +117,25 @@ class LuongAttention(nn.Module):
     def create(query_size):
         return LuongAttention(nn.Linear(query_size, query_size))
 
+    @staticmethod
+    def _masked_softmax(vectors, sequence_lengths):
+        batch_size, max_length = vectors.size()
+        indices = torch.arange(max_length).unsqueeze(0).expand(batch_size, -1)
+        mask = indices >= sequence_lengths.unsqueeze(1)
+        vectors.masked_fill_(mask, float('-inf'))
+        return F.softmax(vectors, dim=1)
+
     # attended: (other sequence length x batch size x query size)
     # Uses the "general" content-based function
-    def forward(self, query, attended):
+    def forward(self, query, attended, sequence_lengths):
         # (batch size x query size)
         key = self.linear(query)
-        # TODO: Use masked softmax
         # (batch size x other sequence length)
-        align = F.softmax(
+        align = LuongAttention._masked_softmax(
             torch.matmul(attended.unsqueeze(2), key.unsqueeze(2))
             .squeeze()
             .transpose(1, 0),
-            dim=1,
+            sequence_lengths,
         )
         # (batch_size x query size)
         context = (
