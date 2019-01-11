@@ -1,7 +1,7 @@
 import pprint as pp
 import random
 
-from torch.nn.utils.rnn import pack_sequence, pad_packed_sequence, pad_sequence
+from torch.nn.utils.rnn import pack_sequence, pad_sequence
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -21,11 +21,11 @@ class RobustFill(nn.Module):
         self.program_length = program_length
 
         self.embedding = nn.Embedding(string_size, string_embedding_size)
-        self.input_lstm = AttentionLSTM(
+        self.input_lstm = AttentionLSTM.basic_seq_to_seq(
             input_size=string_embedding_size,
             hidden_size=hidden_size,
         )
-        self.output_lstm = AttentionLSTM(
+        self.output_lstm = AttentionLSTM.basic_seq_to_seq(
             input_size=string_embedding_size,
             hidden_size=hidden_size,
         )
@@ -134,12 +134,16 @@ class LuongAttention(nn.Module):
 
 
 class AttentionLSTM(nn.Module):
-    def __init__(self, input_size, hidden_size):
+    def __init__(self, attention_lstm):
         super().__init__()
-        self.lstm = nn.LSTM(
+        self.attention_lstm = attention_lstm
+
+    @staticmethod
+    def basic_seq_to_seq(input_size, hidden_size):
+        return AttentionLSTM(nn.LSTM(
             input_size=input_size,
             hidden_size=hidden_size,
-        )
+        ))
 
     @staticmethod
     def _sort_and_pack(sequence_batch):
@@ -168,7 +172,7 @@ class AttentionLSTM(nn.Module):
 
         return unsorted_hn, unsorted_cn
 
-    def _apply_lstm(self, packed, original_hidden):
+    def _unroll(self, packed, original_hidden):
         hidden = original_hidden
 
         all_hn = []
@@ -185,7 +189,7 @@ class AttentionLSTM(nn.Module):
                 final_hn.append(hn[:, size:, :])
                 final_cn.append(cn[:, size:, :])
 
-            _, hidden = self.lstm(timestep_data.unsqueeze(0), hidden)
+            _, hidden = self.attention_lstm(timestep_data.unsqueeze(0), hidden)
 
             all_hn.append(hidden[0].squeeze(0))
             pos += size
@@ -201,12 +205,6 @@ class AttentionLSTM(nn.Module):
         # (sequence_length x batch_size x hidden_size)
         all_hidden = pad_sequence(all_hn, batch_first=True)
 
-        # TODO: Move this into unit tests
-        all_hidden2, final_hidden2 = self.lstm(packed, original_hidden)
-        assert torch.eq(final_hidden[0], final_hidden2[0]).all()
-        assert torch.eq(final_hidden[1], final_hidden2[1]).all()
-        assert torch.eq(all_hidden, pad_packed_sequence(all_hidden2)[0]).all()
-
         return all_hidden, final_hidden
 
     def forward(self, sequence_batch, hidden):
@@ -215,7 +213,7 @@ class AttentionLSTM(nn.Module):
             None if hidden is None
             else AttentionLSTM._sort(hidden, sorted_indices)
         )
-        _, final_hidden = self._apply_lstm(packed, sorted_hidden)
+        _, final_hidden = self._unroll(packed, sorted_hidden)
         return AttentionLSTM._unsort(final_hidden, sorted_indices)
 
 

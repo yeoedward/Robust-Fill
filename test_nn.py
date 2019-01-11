@@ -1,44 +1,73 @@
 from unittest import TestCase
 
+from torch.nn.utils.rnn import pack_sequence, pad_packed_sequence
 import torch
+import torch.nn as nn
 
-from nn import LuongAttention
+from nn import AttentionLSTM, LuongAttention
 
 
 class TestNN(TestCase):
+    def test_attention_lstm_unroll(self):
+        lstm = nn.LSTM(2, 3)
+        attention_lstm = AttentionLSTM(lstm)
+
+        a = torch.Tensor([
+            [1, 1],
+            [2, 2],
+            [3, 3],
+        ])
+        b = torch.Tensor([
+            [4, 4],
+            [5, 5],
+        ])
+        c = torch.Tensor([
+            [6, 6],
+        ])
+        packed = pack_sequence([a, b, c])
+
+        all_hidden, final_hidden = attention_lstm._unroll(packed, None)
+        all_hidden2, final_hidden2 = lstm(packed, None)
+
+        self.assertTrue(torch.equal(final_hidden[0], final_hidden2[0]))
+        self.assertTrue(torch.equal(final_hidden[1], final_hidden2[1]))
+        self.assertTrue(torch.equal(
+            all_hidden,
+            pad_packed_sequence(all_hidden2)[0],
+        ))
+
     def test_luong_attention(self):
         query = torch.Tensor([
             [1, 2, 3],
-            [4, 5, 6],
-            [4, 5, 6],
+            [1, 2, 3],
+            [1, 2, 3],
         ])
         attended = torch.Tensor([
             [
-                [0.1, 0.2, 0.3],
-                [0.4, 0.5, 0.6],
-                [0.4, 0.5, 0.6],
+                [1, 2, 3],
+                [1, 2, 3],
+                [1, 2, 3],
             ],
             [
-                [0.7, 0.8, 0.9],
-                [0.9, 0.8, 0.7],
-                [0.9, 0.8, 0.7],
+                [4, 5, 6],  # Ignored because of sequence length below
+                [4, 5, 6],
+                [4, 5, 6],
             ],
             [
-                [0.6, 0.5, 0.4],
-                [0.3, 0.2, 0.1],
-                [9, 9, 9],  # Ignored because of sequence length below
+                [7, 8, 9],  # Ignored because of sequence length below
+                [7, 8, 9],
+                [7, 8, 9],  # Ignored because of sequence length below
             ],
         ])
-        sequence_lengths = torch.LongTensor([3, 3, 2])
+        sequence_lengths = torch.LongTensor([1, 3, 2])
 
         attention = LuongAttention(lambda t: t)
         context = attention(query, attended, sequence_lengths)
 
         expected = torch.Tensor([
-            [0.6758598685, 0.7563887239, 0.8369175196],
-            [0.8917768598, 0.7950369716, 0.6982971430],
-            [0.8918486834, 0.7951092124, 0.6983697414],
+            [1, 2, 3],
+            [7, 8, 9],
+            [4, 5, 6],
         ])
 
-        self.assertEqual(expected.size(), context.size())
-        self.assertTrue(expected.eq(context).all())
+        self.assertTrue(torch.equal(expected, context))
