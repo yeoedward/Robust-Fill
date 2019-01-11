@@ -15,7 +15,6 @@ class RobustFill(nn.Module):
             string_embedding_size,
             hidden_size,
             program_size,
-            num_lstm_layers,
             program_length):
         super().__init__()
 
@@ -25,17 +24,14 @@ class RobustFill(nn.Module):
         self.input_lstm = AttentionLSTM(
             input_size=string_embedding_size,
             hidden_size=hidden_size,
-            num_layers=num_lstm_layers,
         )
         self.output_lstm = AttentionLSTM(
             input_size=string_embedding_size,
             hidden_size=hidden_size,
-            num_layers=num_lstm_layers,
         )
         self.program_lstm = nn.LSTM(
             input_size=hidden_size,
             hidden_size=hidden_size,
-            num_layers=num_lstm_layers,
         )
         self.max_pool_linear = nn.Linear(hidden_size, hidden_size)
         self.softmax_linear = nn.Linear(hidden_size, program_size)
@@ -138,12 +134,11 @@ class LuongAttention(nn.Module):
 
 
 class AttentionLSTM(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers):
+    def __init__(self, input_size, hidden_size):
         super().__init__()
         self.lstm = nn.LSTM(
             input_size=input_size,
             hidden_size=hidden_size,
-            num_layers=num_layers,
         )
 
     @staticmethod
@@ -271,7 +266,6 @@ def main():
         string_embedding_size=2,
         hidden_size=8,
         program_size=2,
-        num_lstm_layers=1,
         program_length=1,
     )
     optimizer = optim.SGD(robust_fill.parameters(), lr=0.01)
