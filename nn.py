@@ -21,11 +21,11 @@ class RobustFill(nn.Module):
         self.program_length = program_length
 
         self.embedding = nn.Embedding(string_size, string_embedding_size)
-        self.input_lstm = AttentionLSTM.basic_seq_to_seq(
+        self.input_lstm = AttentionLSTM.lstm(
             input_size=string_embedding_size,
             hidden_size=hidden_size,
         )
-        self.output_lstm = AttentionLSTM.basic_seq_to_seq(
+        self.output_lstm = AttentionLSTM.lstm(
             input_size=string_embedding_size,
             hidden_size=hidden_size,
         )
@@ -133,14 +133,14 @@ class LuongAttention(nn.Module):
         return context
 
 
-class BasicSeqToSeq(nn.Module):
+class LSTMAdapter(nn.Module):
     def __init__(self, lstm):
         super().__init__()
         self.lstm = lstm
 
     @staticmethod
     def create(input_size, hidden_size):
-        return BasicSeqToSeq(nn.LSTM(input_size, hidden_size))
+        return LSTMAdapter(nn.LSTM(input_size, hidden_size))
 
     # attended and sequence_lengths are here to conform to the same interfaces
     # as the attention-variants
@@ -149,7 +149,7 @@ class BasicSeqToSeq(nn.Module):
         return hidden
 
 
-class AttentionA(nn.Module):
+class SingleAttention(nn.Module):
     def __init__(self, input_size, hidden_size):
         super().__init__()
         self.attention = LuongAttention.create(hidden_size)
@@ -170,12 +170,12 @@ class AttentionLSTM(nn.Module):
         self.attention_lstm = attention_lstm
 
     @staticmethod
-    def basic_seq_to_seq(input_size, hidden_size):
-        return AttentionLSTM(BasicSeqToSeq.create(input_size, hidden_size))
+    def lstm(input_size, hidden_size):
+        return AttentionLSTM(LSTMAdapter.create(input_size, hidden_size))
 
     @staticmethod
-    def attention_a(input_size, hidden_size):
-        return AttentionLSTM(AttentionA(input_size, hidden_size))
+    def single_attention(input_size, hidden_size):
+        return AttentionLSTM(SingleAttention(input_size, hidden_size))
 
     @staticmethod
     def _sort_and_pack(sequence_batch):
