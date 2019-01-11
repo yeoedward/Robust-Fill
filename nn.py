@@ -133,6 +133,37 @@ class LuongAttention(nn.Module):
         return context
 
 
+class BasicSeqToSeq(nn.Module):
+    def __init__(self, lstm):
+        super().__init__()
+        self.lstm = lstm
+
+    @staticmethod
+    def create(input_size, hidden_size):
+        return BasicSeqToSeq(nn.LSTM(input_size, hidden_size))
+
+    # attended and sequence_lengths are here to conform to the same interfaces
+    # as the attention-variants
+    def forward(self, input_, hidden, attended=None, sequence_lengths=None):
+        _, hidden = self.lstm(input_, hidden)
+        return hidden
+
+
+class AttentionA(nn.Module):
+    def __init__(self, input_size, hidden_size):
+        super().__init__()
+        self.attention = LuongAttention.create(hidden_size)
+        self.lstm = nn.LSTM(input_size + hidden_size, hidden_size)
+
+    def forward(self, input_, hidden, attended, sequence_lengths):
+        context = self.attention(hidden, attended, sequence_lengths)
+        _, hidden = self.lstm(
+            torch.cat(input_, context, 1).unsqueeze(0),
+            hidden,
+        )
+        return hidden
+
+
 class AttentionLSTM(nn.Module):
     def __init__(self, attention_lstm):
         super().__init__()
@@ -140,10 +171,11 @@ class AttentionLSTM(nn.Module):
 
     @staticmethod
     def basic_seq_to_seq(input_size, hidden_size):
-        return AttentionLSTM(nn.LSTM(
-            input_size=input_size,
-            hidden_size=hidden_size,
-        ))
+        return AttentionLSTM(BasicSeqToSeq.create(input_size, hidden_size))
+
+    @staticmethod
+    def attention_a(input_size, hidden_size):
+        return AttentionLSTM(AttentionA(input_size, hidden_size))
 
     @staticmethod
     def _sort_and_pack(sequence_batch):
@@ -189,7 +221,8 @@ class AttentionLSTM(nn.Module):
                 final_hn.append(hn[:, size:, :])
                 final_cn.append(cn[:, size:, :])
 
-            _, hidden = self.attention_lstm(timestep_data.unsqueeze(0), hidden)
+            # TODO: Pass in attended and sequence_lengths
+            hidden = self.attention_lstm(timestep_data.unsqueeze(0), hidden)
 
             all_hn.append(hidden[0].squeeze(0))
             pos += size

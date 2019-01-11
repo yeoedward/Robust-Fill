@@ -4,13 +4,13 @@ from torch.nn.utils.rnn import pack_sequence, pad_packed_sequence
 import torch
 import torch.nn as nn
 
-from nn import AttentionLSTM, LuongAttention
+from nn import AttentionLSTM, BasicSeqToSeq, LuongAttention
 
 
 class TestNN(TestCase):
     def test_attention_lstm_unroll(self):
         lstm = nn.LSTM(2, 3)
-        attention_lstm = AttentionLSTM(lstm)
+        attention_lstm = AttentionLSTM(BasicSeqToSeq(lstm))
 
         a = torch.Tensor([
             [1, 1],
