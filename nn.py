@@ -123,10 +123,7 @@ class LuongAttention(nn.Module):
 
     @staticmethod
     def _masked_softmax(vectors, sequence_lengths):
-        batch_size, max_length = vectors.size()
-        indices = torch.arange(max_length).unsqueeze(0).expand(batch_size, -1)
-        mask = indices >= sequence_lengths.unsqueeze(1)
-        vectors.masked_fill_(mask, float('-inf'))
+        pad(vectors, sequence_lengths, float('-inf'))
         return F.softmax(vectors, dim=1)
 
     # attended: (other sequence length x batch size x query size)
@@ -325,6 +322,13 @@ class AttentionLSTM(nn.Module):
             s.shape[0] for s in sequence_batch
         ])
         return (unsorted_all_hidden, sequence_lengths), unsorted_final_hidden
+
+
+def pad(tensor, sequence_lengths, value):
+    batch_size, max_length = tensor.size()
+    indices = torch.arange(max_length).unsqueeze(0).expand(batch_size, -1)
+    mask = indices >= sequence_lengths.unsqueeze(1)
+    tensor.masked_fill_(mask, value)
 
 
 def generate_program(batch_size):
