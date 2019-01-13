@@ -29,7 +29,7 @@ class RobustFill(nn.Module):
             input_size=string_embedding_size,
             hidden_size=hidden_size,
         )
-        self.program_lstm = nn.LSTM(
+        self.program_lstm = AttentionLSTM.single_attention(
             input_size=hidden_size,
             hidden_size=hidden_size,
         )
@@ -77,12 +77,26 @@ class RobustFill(nn.Module):
         output_batch = self._embed_batch(output_batch)
 
         input_all_hidden, hidden = self.input_lstm(input_batch, hidden=None)
-        _, hidden = self.output_lstm(output_batch, hidden, input_all_hidden)
+        output_all_hidden, hidden = self.output_lstm(
+            output_batch,
+            hidden=hidden,
+            attended=input_all_hidden,
+        )
 
         program_sequence = []
-        previous_hidden = torch.unsqueeze(hidden[0][-1, :, :], dim=0)
+        hidden_batch_size = hidden[0].size()[1]
+        previous_hidden = (
+            hidden[0][-1, :, :]
+            .unsqueeze(1)
+            .chunk(hidden_batch_size)
+        )
+        previous_hidden = [h.squeeze(0) for h in previous_hidden]
         for _ in range(self.program_length):
-            _, hidden = self.program_lstm(previous_hidden, hidden)
+            _, hidden = self.program_lstm(
+                previous_hidden,
+                hidden=hidden,
+                attended=output_all_hidden,
+            )
             hidden_size = hidden[0].size()[2]
             unpooled = (
                 torch.tanh(self.max_pool_linear(hidden[0][-1, :, :]))
@@ -244,6 +258,7 @@ class AttentionLSTM(nn.Module):
         pos = 0
         for size in packed.batch_sizes:
             timestep_data = packed.data[pos:pos+size, :]
+            pos += size
 
             if hidden is not None and hidden[0].size()[1] > size:
                 hn, cn = hidden
@@ -264,7 +279,6 @@ class AttentionLSTM(nn.Module):
             )
 
             all_hn.append(hidden[0].squeeze(0))
-            pos += size
 
         final_hn.append(hidden[0])
         final_cn.append(hidden[1])
@@ -282,19 +296,24 @@ class AttentionLSTM(nn.Module):
         return all_hidden, final_hidden
 
     def forward(self, sequence_batch, hidden, attended=None):
+        if not isinstance(sequence_batch, list):
+            raise ValueError(
+                'sequence_batch has to be a list. Instead got {}.'.format(
+                    type(sequence_batch).__name__,
+                )
+            )
+
         packed, sorted_indices = AttentionLSTM._pack(sequence_batch)
         sorted_hidden, sorted_attended = AttentionLSTM._sort(
             hidden,
             attended,
             sorted_indices,
         )
-
         all_hidden, final_hidden = self._unroll(
             packed,
             sorted_hidden,
             sorted_attended,
         )
-
         unsorted_all_hidden, unsorted_final_hidden = AttentionLSTM._unsort(
             all_hidden=all_hidden,
             final_hidden=final_hidden,

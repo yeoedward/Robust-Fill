@@ -4,7 +4,7 @@ Original Paper: https://arxiv.org/pdf/1703.07469.pdf
 
 ## TODO
 
-- Add attention to program lstm
+- Use outputs as inputs for decoding
 - Create static factory methods for robust fill
 - Variable length programs
 - Integrate neural net with operators
