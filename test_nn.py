@@ -4,7 +4,7 @@ from torch.nn.utils.rnn import pack_sequence, pad_packed_sequence
 import torch
 import torch.nn as nn
 
-from nn import AttentionLSTM, LSTMAdapter, LuongAttention
+from nn import AttentionLSTM, LSTMAdapter, LuongAttention, pad
 
 
 class TestNN(TestCase):
@@ -75,3 +75,43 @@ class TestNN(TestCase):
         ])
 
         self.assertTrue(torch.equal(expected, context))
+
+    def test_pad_2d(self):
+        tensor = torch.Tensor([
+            [1, 2, 3],
+            [4, 5, 6],
+            [7, 8, 9],
+        ])
+        sequence_lengths = torch.LongTensor([3, 1, 2])
+
+        pad(tensor, sequence_lengths, 1337, batch_dim=0, sequence_dim=1)
+
+        expected = torch.Tensor([
+            [1, 2, 3],
+            [4, 1337, 1337],
+            [7, 8, 1337],
+        ])
+        self.assertTrue(torch.equal(expected, tensor))
+
+    def test_pad_3d(self):
+        tensor = torch.Tensor([
+            [[1, 2],
+             [3, 4],
+             [5, 6]],
+            [[6, 5],
+             [4, 3],
+             [2, 1]],
+        ])
+        sequence_lengths = torch.LongTensor([1, 2, 1])
+
+        pad(tensor, sequence_lengths, -1337, batch_dim=1, sequence_dim=0)
+
+        expected = torch.Tensor([
+            [[1, 2],
+             [3, 4],
+             [5, 6]],
+            [[-1337, -1337],
+             [4, 3],
+             [-1337, -1337]],
+        ])
+        self.assertTrue(torch.equal(expected, tensor))

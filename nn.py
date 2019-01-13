@@ -14,13 +14,10 @@ class RobustFill(nn.Module):
             string_size,
             string_embedding_size,
             hidden_size,
-            program_size,
-            program_length):
+            program_size):
         super().__init__()
-
-        self.program_length = program_length
-
         self.embedding = nn.Embedding(string_size, string_embedding_size)
+
         # TODO: Create static factory methods for different configurations
         # e.g. Basic seq-to-seq vs attention A vs attention B...
         self.input_lstm = AttentionLSTM.lstm(
@@ -71,7 +68,7 @@ class RobustFill(nn.Module):
     # Expects:
     # list (batch_size) of tuples (input, output) of list (sequence_length)
     # of token indices
-    def forward(self, batch):
+    def forward(self, batch, max_program_length):
         num_examples = RobustFill._check_num_examples(batch)
         input_batch, output_batch = RobustFill._split_flatten_examples(batch)
 
@@ -93,7 +90,7 @@ class RobustFill(nn.Module):
             .chunk(hidden_batch_size)
         )
         previous_hidden = [h.squeeze(0) for h in previous_hidden]
-        for _ in range(self.program_length):
+        for _ in range(max_program_length):
             _, hidden = self.program_lstm(
                 previous_hidden,
                 hidden=hidden,
@@ -108,9 +105,9 @@ class RobustFill(nn.Module):
             pooled = F.max_pool1d(unpooled, num_examples).squeeze(2)
             program_embedding = self.softmax_linear(pooled)
 
-            program_sequence.append(program_embedding)
+            program_sequence.append(program_embedding.unsqueeze(0))
 
-        return program_sequence
+        return torch.cat(program_sequence)
 
 
 class LuongAttention(nn.Module):
@@ -123,7 +120,13 @@ class LuongAttention(nn.Module):
 
     @staticmethod
     def _masked_softmax(vectors, sequence_lengths):
-        pad(vectors, sequence_lengths, float('-inf'))
+        pad(
+            vectors,
+            sequence_lengths,
+            float('-inf'),
+            batch_dim=0,
+            sequence_dim=1,
+        )
         return F.softmax(vectors, dim=1)
 
     # attended: (other sequence length x batch size x query size)
@@ -324,15 +327,34 @@ class AttentionLSTM(nn.Module):
         return (unsorted_all_hidden, sequence_lengths), unsorted_final_hidden
 
 
-def pad(tensor, sequence_lengths, value):
-    batch_size, max_length = tensor.size()
-    indices = torch.arange(max_length).unsqueeze(0).expand(batch_size, -1)
-    mask = indices >= sequence_lengths.unsqueeze(1)
+def expand_vector(vector, dim, num_dims):
+    if vector.dim() != 1:
+        raise ValueError('Expected vector of dim 1. Instead got {}.'.format(
+            vector.dim(),
+        ))
+
+    return vector.view(*[
+        vector.size()[0] if d == dim else 1
+        for d in range(num_dims)
+    ])
+
+
+def pad(tensor, sequence_lengths, value, batch_dim, sequence_dim):
+    max_length = tensor.size()[sequence_dim]
+    indices = expand_vector(
+        torch.arange(max_length),
+        sequence_dim,
+        tensor.dim(),
+    )
+    mask = indices >= expand_vector(sequence_lengths, batch_dim, tensor.dim())
     tensor.masked_fill_(mask, value)
 
 
 def generate_program(batch_size):
-    return [random.randint(0, 1) for _ in range(batch_size)]
+    return [
+        [0] if random.randint(0, 1) == 0 else [1, 0]
+        for _ in range(batch_size)
+    ]
 
 
 def generate_data(program_batch, num_examples, string_size):
@@ -345,9 +367,9 @@ def generate_data(program_batch, num_examples, string_size):
         for _ in range(num_examples):
             input_sequence = [random.randint(0, string_size-1)]
 
-            if program == 0:
+            if program == [0]:
                 output_sequence = input_sequence
-            elif program == 1:
+            elif program == [1, 0]:
                 output_sequence = input_sequence * 2
             else:
                 raise ValueError('Invalid program {}'.format(program))
@@ -359,11 +381,8 @@ def generate_data(program_batch, num_examples, string_size):
     return batch
 
 
-def one_hot(self, index, size):
-    return (
-        torch.zeros(1, size)
-        .scatter_(1, torch.LongTensor([[index]]), 1)
-    )
+def max_program_length(expected_programs):
+    return max([len(program) for program in expected_programs])
 
 
 def main():
@@ -373,12 +392,12 @@ def main():
     checkpoint_name = './checkpoint.pth'
 
     string_size = 3
+    program_size = 2
     robust_fill = RobustFill(
         string_size=string_size,
         string_embedding_size=2,
         hidden_size=8,
-        program_size=2,
-        program_length=1,
+        program_size=program_size,
     )
     optimizer = optim.SGD(robust_fill.parameters(), lr=0.01)
 
@@ -386,29 +405,58 @@ def main():
     while True:
         optimizer.zero_grad()
 
-        program_batch = generate_program(batch_size=32)
+        expected_programs = generate_program(batch_size=32)
         num_examples = 2
-        data_batch = generate_data(program_batch, num_examples, string_size)
-        program_sequence = robust_fill(data_batch)
-        loss = F.nll_loss(
-            F.log_softmax(torch.cat(program_sequence), dim=1),
-            torch.LongTensor(program_batch),
+        data_batch = generate_data(
+            expected_programs,
+            num_examples,
+            string_size,
+        )
+        max_length = max_program_length(expected_programs)
+        actual_programs = robust_fill(
+            data_batch,
+            max_program_length=max_length,
+        )
+
+        padding_index = -1
+        reshaped_actual_programs = (
+            actual_programs.transpose(1, 0)
+            .contiguous()
+            .view(-1, program_size)
+        )
+        padded_expected_programs = torch.LongTensor([
+                program[i] if i < len(program) else padding_index
+                for program in expected_programs
+                for i in range(max_length)
+        ])
+        loss = F.cross_entropy(
+            reshaped_actual_programs,
+            padded_expected_programs,
+            ignore_index=padding_index,
         )
 
         loss.backward()
         optimizer.step()
 
+        print_batch_limit = 3
         if example_idx % 100 == 0:
             print('Loss: {}'.format(loss))
-            print_batch_limit = 3
+
+            print('Examples:')
             pp.pprint(data_batch[:print_batch_limit])
-            print(program_batch[:print_batch_limit])
-            pp.pprint([
-                F.softmax(p, dim=1)[:print_batch_limit]
-                for p in program_sequence
-            ])
+
+            print('Expected programs:')
+            print(expected_programs[:print_batch_limit])
+
+            print('Actual programs:')
+            print(
+                F.softmax(actual_programs, dim=2)
+                .transpose(1, 0)[:print_batch_limit, :, :]
+            )
+
             print('Checkpointing at example {}'.format(example_idx))
             torch.save(robust_fill.state_dict(), checkpoint_name)
+
             print('Done')
 
         example_idx += 1
