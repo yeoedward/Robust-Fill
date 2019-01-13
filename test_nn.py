@@ -26,7 +26,11 @@ class TestNN(TestCase):
         ])
         packed = pack_sequence([a, b, c])
 
-        all_hidden, final_hidden = attention_lstm._unroll(packed, None)
+        all_hidden, final_hidden = attention_lstm._unroll(
+            packed,
+            hidden=None,
+            attended=None,
+        )
         all_hidden2, final_hidden2 = lstm(packed, None)
 
         self.assertTrue(torch.equal(final_hidden[0], final_hidden2[0]))

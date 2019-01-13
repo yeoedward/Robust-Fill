@@ -4,7 +4,8 @@ Original Paper: https://arxiv.org/pdf/1703.07469.pdf
 
 ## TODO
 
-- Add attention
+- Add attention to program lstm
+- Create static factory methods for robust fill
 - Variable length programs
 - Integrate neural net with operators
 - GPU

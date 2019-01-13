@@ -25,7 +25,7 @@ class RobustFill(nn.Module):
             input_size=string_embedding_size,
             hidden_size=hidden_size,
         )
-        self.output_lstm = AttentionLSTM.lstm(
+        self.output_lstm = AttentionLSTM.single_attention(
             input_size=string_embedding_size,
             hidden_size=hidden_size,
         )
@@ -76,8 +76,8 @@ class RobustFill(nn.Module):
         input_batch = self._embed_batch(input_batch)
         output_batch = self._embed_batch(output_batch)
 
-        hidden = self.input_lstm(input_batch, None)
-        hidden = self.output_lstm(output_batch, hidden)
+        input_all_hidden, hidden = self.input_lstm(input_batch, hidden=None)
+        _, hidden = self.output_lstm(output_batch, hidden, input_all_hidden)
 
         program_sequence = []
         previous_hidden = torch.unsqueeze(hidden[0][-1, :, :], dim=0)
@@ -116,12 +116,20 @@ class LuongAttention(nn.Module):
     # attended: (other sequence length x batch size x query size)
     # Uses the "general" content-based function
     def forward(self, query, attended, sequence_lengths):
+        if query.dim() != 2:
+            raise ValueError(
+                'Expected query to have 2 dimensions. Instead got {}'.format(
+                    query.dim(),
+                )
+            )
+
         # (batch size x query size)
         key = self.linear(query)
         # (batch size x other sequence length)
         align = LuongAttention._masked_softmax(
             torch.matmul(attended.unsqueeze(2), key.unsqueeze(2))
-            .squeeze()
+            .squeeze(3)
+            .squeeze(2)
             .transpose(1, 0),
             sequence_lengths,
         )
@@ -142,10 +150,13 @@ class LSTMAdapter(nn.Module):
     def create(input_size, hidden_size):
         return LSTMAdapter(nn.LSTM(input_size, hidden_size))
 
-    # attended and sequence_lengths are here to conform to the same interfaces
+    # attended_args is here to conform to the same interfaces
     # as the attention-variants
-    def forward(self, input_, hidden, attended=None, sequence_lengths=None):
-        _, hidden = self.lstm(input_, hidden)
+    def forward(self, input_, hidden, attended_args):
+        if attended_args is not None:
+            raise ValueError('LSTM doesnt use the arg "attended"')
+
+        _, hidden = self.lstm(input_.unsqueeze(0), hidden)
         return hidden
 
 
@@ -155,10 +166,15 @@ class SingleAttention(nn.Module):
         self.attention = LuongAttention.create(hidden_size)
         self.lstm = nn.LSTM(input_size + hidden_size, hidden_size)
 
-    def forward(self, input_, hidden, attended, sequence_lengths):
-        context = self.attention(hidden, attended, sequence_lengths)
+    def forward(self, input_, hidden, attended_args):
+        attended, sequence_lengths = attended_args
+        context = self.attention(
+            hidden[0].squeeze(0),
+            attended,
+            sequence_lengths,
+        )
         _, hidden = self.lstm(
-            torch.cat(input_, context, 1).unsqueeze(0),
+            torch.cat((input_, context), 1).unsqueeze(0),
             hidden,
         )
         return hidden
@@ -178,7 +194,7 @@ class AttentionLSTM(nn.Module):
         return AttentionLSTM(SingleAttention(input_size, hidden_size))
 
     @staticmethod
-    def _sort_and_pack(sequence_batch):
+    def _pack(sequence_batch):
         sorted_indices = sorted(
             range(len(sequence_batch)),
             key=lambda i: sequence_batch[i].shape[0],
@@ -188,25 +204,39 @@ class AttentionLSTM(nn.Module):
         return packed, sorted_indices
 
     @staticmethod
-    def _sort(hidden, sorted_indices):
-        sorted_hn = hidden[0][:, sorted_indices, :]
-        sorted_cn = hidden[1][:, sorted_indices, :]
-        return sorted_hn, sorted_cn
+    def _sort(hidden, attended, sorted_indices):
+        if hidden is None:
+            return None, None
+
+        sorted_hidden = (
+            hidden[0][:, sorted_indices, :],
+            hidden[1][:, sorted_indices, :],
+        )
+
+        sorted_attended = None
+        if attended is not None:
+            sorted_attended = (
+                attended[0][:, sorted_indices, :],
+                attended[1][sorted_indices],
+            )
+
+        return sorted_hidden, sorted_attended
 
     @staticmethod
-    def _unsort(hidden, sorted_indices):
+    def _unsort(all_hidden, final_hidden, sorted_indices):
         unsorted_indices = [None] * len(sorted_indices)
         for i, original_idx in enumerate(sorted_indices):
             unsorted_indices[original_idx] = i
 
-        unsorted_hn = hidden[0][:, unsorted_indices, :]
-        unsorted_cn = hidden[1][:, unsorted_indices, :]
+        unsorted_all_hidden = all_hidden[:, unsorted_indices, :]
+        unsorted_final_hidden = (
+            final_hidden[0][:, unsorted_indices, :],
+            final_hidden[1][:, unsorted_indices, :],
+        )
 
-        return unsorted_hn, unsorted_cn
+        return unsorted_all_hidden, unsorted_final_hidden
 
-    def _unroll(self, packed, original_hidden):
-        hidden = original_hidden
-
+    def _unroll(self, packed, hidden, attended):
         all_hn = []
         final_hn = []
         final_cn = []
@@ -221,8 +251,17 @@ class AttentionLSTM(nn.Module):
                 final_hn.append(hn[:, size:, :])
                 final_cn.append(cn[:, size:, :])
 
-            # TODO: Pass in attended and sequence_lengths
-            hidden = self.attention_lstm(timestep_data.unsqueeze(0), hidden)
+                if attended is not None:
+                    attended = (
+                        attended[0][:, :size, :],
+                        attended[1][:size],
+                    )
+
+            hidden = self.attention_lstm(
+                input_=timestep_data,
+                hidden=hidden,
+                attended_args=attended,
+            )
 
             all_hn.append(hidden[0].squeeze(0))
             pos += size
@@ -230,8 +269,10 @@ class AttentionLSTM(nn.Module):
         final_hn.append(hidden[0])
         final_cn.append(hidden[1])
 
-        final_hidden = (torch.cat(final_hn[::-1], 1),
-                        torch.cat(final_cn[::-1], 1))
+        final_hidden = (
+            torch.cat(final_hn[::-1], 1),
+            torch.cat(final_cn[::-1], 1),
+        )
         # all_hn is a list (sequence_length) of
         # tensors (batch_size for timestep x hidden_size).
         # So if we set batch_first=True, we get back tensor
@@ -240,14 +281,29 @@ class AttentionLSTM(nn.Module):
 
         return all_hidden, final_hidden
 
-    def forward(self, sequence_batch, hidden):
-        packed, sorted_indices = AttentionLSTM._sort_and_pack(sequence_batch)
-        sorted_hidden = (
-            None if hidden is None
-            else AttentionLSTM._sort(hidden, sorted_indices)
+    def forward(self, sequence_batch, hidden, attended=None):
+        packed, sorted_indices = AttentionLSTM._pack(sequence_batch)
+        sorted_hidden, sorted_attended = AttentionLSTM._sort(
+            hidden,
+            attended,
+            sorted_indices,
         )
-        _, final_hidden = self._unroll(packed, sorted_hidden)
-        return AttentionLSTM._unsort(final_hidden, sorted_indices)
+
+        all_hidden, final_hidden = self._unroll(
+            packed,
+            sorted_hidden,
+            sorted_attended,
+        )
+
+        unsorted_all_hidden, unsorted_final_hidden = AttentionLSTM._unsort(
+            all_hidden=all_hidden,
+            final_hidden=final_hidden,
+            sorted_indices=sorted_indices,
+        )
+        sequence_lengths = torch.LongTensor([
+            s.shape[0] for s in sequence_batch
+        ])
+        return (unsorted_all_hidden, sequence_lengths), unsorted_final_hidden
 
 
 def generate_program(batch_size):
