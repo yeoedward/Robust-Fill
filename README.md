@@ -4,7 +4,6 @@ Original Paper: https://arxiv.org/pdf/1703.07469.pdf
 
 ## TODO
 
-- Use outputs as inputs for decoding
 - Integrate neural net with operators
 - GPU
 - Beam search

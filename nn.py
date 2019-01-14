@@ -16,8 +16,8 @@ class RobustFill(nn.Module):
             hidden_size,
             program_size):
         super().__init__()
+        self.program_size = program_size
         self.embedding = nn.Embedding(string_size, string_embedding_size)
-
         # TODO: Create static factory methods for different configurations
         # e.g. Basic seq-to-seq vs attention A vs attention B...
         self.input_lstm = AttentionLSTM.lstm(
@@ -29,7 +29,7 @@ class RobustFill(nn.Module):
             hidden_size=hidden_size,
         )
         self.program_lstm = AttentionLSTM.single_attention(
-            input_size=hidden_size,
+            input_size=program_size,
             hidden_size=hidden_size,
         )
         self.max_pool_linear = nn.Linear(hidden_size, hidden_size)
@@ -83,16 +83,13 @@ class RobustFill(nn.Module):
         )
 
         program_sequence = []
-        hidden_batch_size = hidden[0].size()[1]
-        previous_hidden = (
-            hidden[0][-1, :, :]
-            .unsqueeze(1)
-            .chunk(hidden_batch_size)
-        )
-        previous_hidden = [h.squeeze(0) for h in previous_hidden]
+        decoder_input = [
+            torch.zeros(1, self.program_size)
+            for _ in range(hidden[0].size()[1])
+        ]
         for _ in range(max_program_length):
             _, hidden = self.program_lstm(
-                previous_hidden,
+                decoder_input,
                 hidden=hidden,
                 attended=output_all_hidden,
             )
@@ -106,6 +103,11 @@ class RobustFill(nn.Module):
             program_embedding = self.softmax_linear(pooled)
 
             program_sequence.append(program_embedding.unsqueeze(0))
+            decoder_input = [
+                F.softmax(p, dim=1)
+                for p in program_embedding.split(1)
+                for _ in range(num_examples)
+            ]
 
         return torch.cat(program_sequence)
 
