@@ -20,7 +20,7 @@ source activate robust_fill
 Train neural net:
 
 ```
-python nn.py
+python train.py
 ```
 
 Run unit tests:
