@@ -16,24 +16,21 @@ class RobustFill(nn.Module):
             hidden_size,
             program_size):
         super().__init__()
-        self.program_size = program_size
         self.embedding = nn.Embedding(string_size, string_embedding_size)
         # TODO: Create static factory methods for different configurations
         # e.g. Basic seq-to-seq vs attention A vs attention B...
-        self.input_lstm = AttentionLSTM.lstm(
+        self.input_encoder = AttentionLSTM.lstm(
             input_size=string_embedding_size,
             hidden_size=hidden_size,
         )
-        self.output_lstm = AttentionLSTM.single_attention(
+        self.output_encoder = AttentionLSTM.single_attention(
             input_size=string_embedding_size,
             hidden_size=hidden_size,
         )
-        self.program_lstm = AttentionLSTM.single_attention(
-            input_size=program_size,
+        self.program_decoder = ProgramDecoder(
             hidden_size=hidden_size,
+            program_size=program_size,
         )
-        self.max_pool_linear = nn.Linear(hidden_size, hidden_size)
-        self.softmax_linear = nn.Linear(hidden_size, program_size)
 
     @staticmethod
     def _check_num_examples(batch):
@@ -75,13 +72,37 @@ class RobustFill(nn.Module):
         input_batch = self._embed_batch(input_batch)
         output_batch = self._embed_batch(output_batch)
 
-        input_all_hidden, hidden = self.input_lstm(input_batch, hidden=None)
-        output_all_hidden, hidden = self.output_lstm(
+        input_all_hidden, hidden = self.input_encoder(input_batch)
+        output_all_hidden, hidden = self.output_encoder(
             output_batch,
             hidden=hidden,
             attended=input_all_hidden,
         )
+        return self.program_decoder(
+            hidden=hidden,
+            output_all_hidden=output_all_hidden,
+            num_examples=num_examples,
+            max_program_length=max_program_length,
+        )
 
+
+class ProgramDecoder(nn.Module):
+    def __init__(self, hidden_size, program_size):
+        super().__init__()
+        self.program_size = program_size
+        self.program_lstm = AttentionLSTM.single_attention(
+            input_size=program_size,
+            hidden_size=hidden_size,
+        )
+        self.max_pool_linear = nn.Linear(hidden_size, hidden_size)
+        self.softmax_linear = nn.Linear(hidden_size, program_size)
+
+    def forward(
+            self,
+            hidden,
+            output_all_hidden,
+            num_examples,
+            max_program_length):
         program_sequence = []
         decoder_input = [
             torch.zeros(1, self.program_size)
@@ -299,7 +320,7 @@ class AttentionLSTM(nn.Module):
 
         return all_hidden, final_hidden
 
-    def forward(self, sequence_batch, hidden, attended=None):
+    def forward(self, sequence_batch, hidden=None, attended=None):
         if not isinstance(sequence_batch, list):
             raise ValueError(
                 'sequence_batch has to be a list. Instead got {}.'.format(
