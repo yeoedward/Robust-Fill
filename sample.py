@@ -24,7 +24,7 @@ def sample_example(
         *,
         max_expressions=10,
         max_characters=100,
-        max_empty_strings=2,
+        max_empty_strings=0,
         num_strings=4,
         discard_program_num_empty=100,
         discard_program_num_exceptions=100):

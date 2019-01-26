@@ -4,7 +4,6 @@ Original Paper: https://arxiv.org/pdf/1703.07469.pdf
 
 ## TODO
 
-- Integrate neural net with operators
 - GPU
 - Beam search
 

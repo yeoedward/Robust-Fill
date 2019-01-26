@@ -18,7 +18,5 @@ class TestTokens(TestCase):
         num_samples = 1000
         for _ in range(num_samples):
             sample_program(10).to_tokens(token_tables.op_token_table)
-            [
+            for char in sample_string(30):
                 token_tables.string_token_table[char]
-                for char in sample_string(30)
-            ]

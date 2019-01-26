@@ -13,13 +13,13 @@ TokenTables = namedtuple(
 
 def build_token_tables():
     token_op_table = [
+        EOS,
         op.Concat,
         op.Compose,
         op.ConstStr,
         op.SubStr,
         op.GetSpan,
         op.Trim,
-        EOS,
     ]
 
     # Nesting operators and their args get "compacted" into "primitive" tokens
