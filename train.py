@@ -44,7 +44,7 @@ def checkpoint(
     print('Done')
 
 
-def train(robust_fill, optimizer, sample, checkpoint_filename, program_size):
+def train(robust_fill, optimizer, sample, checkpoint_filename):
     example_idx = 0
     while True:
         optimizer.zero_grad()
@@ -53,6 +53,7 @@ def train(robust_fill, optimizer, sample, checkpoint_filename, program_size):
         max_length = max_program_length(expected_programs)
         actual_programs = robust_fill(examples, max_length)
 
+        program_size = actual_programs.size()[2]
         padding_index = -1
         reshaped_actual_programs = (
             actual_programs.transpose(1, 0)
@@ -126,12 +127,11 @@ def sample_easy_examples(batch_size, string_size, num_examples):
 def train_easy():
     checkpoint_filename = './checkpoint.pth'
     string_size = 3
-    program_size = 2
     robust_fill = RobustFill(
         string_size=string_size,
         string_embedding_size=2,
         hidden_size=8,
-        program_size=program_size,
+        program_size=2,
     )
     optimizer = optim.SGD(robust_fill.parameters(), lr=0.01)
 
@@ -147,7 +147,6 @@ def train_easy():
         optimizer=optimizer,
         sample=sample,
         checkpoint_filename=checkpoint_filename,
-        program_size=program_size,
     )
 
 
@@ -181,12 +180,11 @@ def train_full():
     token_tables = build_token_tables()
 
     checkpoint_filename = './checkpoint.pth'
-    program_size = len(token_tables.op_token_table)
     robust_fill = RobustFill(
         string_size=len(op.CHARACTER),
         string_embedding_size=32,
         hidden_size=256,
-        program_size=program_size,
+        program_size=len(token_tables.op_token_table),
     )
     optimizer = optim.SGD(robust_fill.parameters(), lr=0.01)
 
@@ -203,7 +201,6 @@ def train_full():
         optimizer=optimizer,
         sample=sample,
         checkpoint_filename=checkpoint_filename,
-        program_size=program_size,  # TODO: Remove this argument?
     )
 
 
