@@ -22,6 +22,13 @@ Train neural net:
 python train.py
 ```
 
+For testing purposes, you can run a smaller network on a
+smaller version of the problem to make sure it learns.
+
+```
+python train.py --dry
+```
+
 Run unit tests:
 
 ```

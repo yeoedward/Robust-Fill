@@ -1,3 +1,4 @@
+import argparse
 import pprint as pp
 import random
 
@@ -205,11 +206,21 @@ def train_full():
 
 
 def main():
+    parser = argparse.ArgumentParser(description='Train RobustFill.')
+    parser.add_argument(
+        '--dry',
+        action='store_true',
+        help='run smaller network on easier version of the problem',
+    )
+    args = parser.parse_args()
+
     torch.manual_seed(1337)
     random.seed(420)
 
-    # TODO: Add flag for train_easy
-    train_full()
+    if args.dry:
+        train_easy()
+    else:
+        train_full()
 
 
 if __name__ == '__main__':
