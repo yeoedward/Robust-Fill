@@ -11,6 +11,13 @@ TokenTables = namedtuple(
 )
 
 
+def tokenize_string(string, string_token_table):
+    return [
+        string_token_table[char]
+        for char in string
+    ]
+
+
 def build_token_tables():
     token_op_table = [
         EOS,

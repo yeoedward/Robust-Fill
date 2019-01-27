@@ -8,7 +8,7 @@ import torch.optim as optim
 
 from robust_fill import RobustFill
 from sample import sample_example
-from tokens import build_token_tables
+from tokens import build_token_tables, tokenize_string
 import operators as op
 
 
@@ -16,36 +16,13 @@ def max_program_length(expected_programs):
     return max([len(program) for program in expected_programs])
 
 
-def checkpoint(
+def train(
         robust_fill,
-        loss,
-        examples,
-        expected_programs,
-        actual_programs,
+        optimizer,
+        sample,
         checkpoint_filename,
-        example_idx):
-    print_batch_limit = 3
-    print('Loss: {}'.format(loss))
-
-    print('Examples:')
-    pp.pprint(examples[:print_batch_limit])
-
-    print('Expected programs:')
-    print(expected_programs[:print_batch_limit])
-
-    print('Actual programs:')
-    print(
-        F.softmax(actual_programs, dim=2)
-        .transpose(1, 0)[:print_batch_limit, :, :]
-    )
-
-    print('Checkpointing at example {}'.format(example_idx))
-    torch.save(robust_fill.state_dict(), checkpoint_filename)
-
-    print('Done')
-
-
-def train(robust_fill, optimizer, sample, checkpoint_filename):
+        checkpoint_step_size,
+        checkpoint_print_tensors):
     example_idx = 0
     while True:
         optimizer.zero_grad()
@@ -75,16 +52,31 @@ def train(robust_fill, optimizer, sample, checkpoint_filename):
         loss.backward()
         optimizer.step()
 
-        if example_idx % 1 == 0:
-            checkpoint(
-                robust_fill=robust_fill,
-                loss=loss,
-                examples=examples,
-                expected_programs=expected_programs,
-                actual_programs=actual_programs,
-                checkpoint_filename=checkpoint_filename,
-                example_idx=example_idx,
-            )
+        if example_idx % checkpoint_step_size == 0:
+            print('Checkpointing at example {}'.format(example_idx))
+            print('Loss: {}'.format(loss))
+
+            if checkpoint_print_tensors:
+                print_batch_limit = 3
+
+                print('Examples:')
+                pp.pprint(examples[:print_batch_limit])
+
+                print('Expected programs:')
+                print(expected_programs[:print_batch_limit])
+
+                print('Actual programs:')
+                print(
+                    F.softmax(actual_programs, dim=2)
+                    .transpose(1, 0)[:print_batch_limit, :, :]
+                )
+
+            if checkpoint_filename is not None:
+                print('Saving to file {}'.format(checkpoint_filename))
+                torch.save(robust_fill.state_dict(), checkpoint_filename)
+
+            print('Done')
+
         example_idx += 1
 
 
@@ -119,14 +111,13 @@ def generate_data(program_batch, num_examples, string_size):
     return batch
 
 
-def sample_easy_examples(batch_size, string_size, num_examples):
+def sample_easy(batch_size, string_size, num_examples):
     programs = generate_program(batch_size)
     examples = generate_data(programs, num_examples, string_size)
     return programs, examples
 
 
 def train_easy():
-    checkpoint_filename = './checkpoint.pth'
     string_size = 3
     robust_fill = RobustFill(
         string_size=string_size,
@@ -137,7 +128,7 @@ def train_easy():
     optimizer = optim.SGD(robust_fill.parameters(), lr=0.01)
 
     def sample():
-        return sample_easy_examples(
+        return sample_easy(
             batch_size=32,
             string_size=string_size,
             num_examples=2,
@@ -147,15 +138,10 @@ def train_easy():
         robust_fill=robust_fill,
         optimizer=optimizer,
         sample=sample,
-        checkpoint_filename=checkpoint_filename,
+        checkpoint_filename=None,
+        checkpoint_step_size=100,
+        checkpoint_print_tensors=True,
     )
-
-
-def tokenize_string(string, string_token_table):
-    return [
-        string_token_table[char]
-        for char in string
-    ]
 
 
 def sample_full(token_tables, batch_size, max_expressions, max_characters):
@@ -202,6 +188,8 @@ def train_full():
         optimizer=optimizer,
         sample=sample,
         checkpoint_filename=checkpoint_filename,
+        checkpoint_step_size=1,
+        checkpoint_print_tensors=False,
     )
 
 
