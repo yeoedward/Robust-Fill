@@ -12,8 +12,9 @@ Original Paper: https://arxiv.org/pdf/1703.07469.pdf
 Set up environment:
 
 ```
-conda env create -f environment.yml
-source activate robust_fill
+python3 -m venv env
+source env/bin/activate
+pip install -r requirements.txt
 ```
 
 Train neural net:
