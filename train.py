@@ -1,6 +1,7 @@
 import argparse
 import pprint as pp
 import random
+from typing import Callable, List, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -8,36 +9,44 @@ import torch.optim as optim
 
 from robust_fill import RobustFill
 from sample import sample_example
-from tokens import build_token_tables, tokenize_string
+from tokens import TokenTables, build_token_tables, tokenize_string
 import operators as op
 
 
-def max_program_length(expected_programs):
+def max_program_length(expected_programs: List[List[int]]) -> int:
+    """Return length of longest program."""
     return max([len(program) for program in expected_programs])
 
 
 def train(
-        robust_fill,
-        optimizer,
-        sample,
-        checkpoint_filename,
-        checkpoint_step_size,
-        checkpoint_print_tensors):
+        robust_fill: RobustFill,
+        optimizer: optim.Optimizer,
+        sample: Callable[[], Tuple[List, List]],
+        checkpoint_filename: str,
+        checkpoint_step_size: int,
+        checkpoint_print_tensors: bool) -> None:
+    """Infinite loop for training."""
     example_idx = 0
     while True:
-        optimizer.zero_grad()
-
         expected_programs, examples = sample()
         max_length = max_program_length(expected_programs)
         actual_programs = robust_fill(examples, max_length)
 
+        # Compute cross-entropy loss ignoring padding tokens due to
+        # different program lengths.
         program_size = actual_programs.size()[2]
         padding_index = -1
+        # Reshape actual_programs (seq length, batch size, program size)
+        # to (batch size * seq length, program size).
         reshaped_actual_programs = (
             actual_programs.transpose(1, 0)
+            # Necessary because .view() expects contiguity but
+            # .transpose() doesn't copy.
             .contiguous()
             .view(-1, program_size)
         )
+        # Convert expected programs from list of lists of ints (uneven lengths)
+        # to a tensor of (batch size * max length) with padding tokens.
         padded_expected_programs = torch.LongTensor([
                 program[i] if i < len(program) else padding_index
                 for program in expected_programs
@@ -49,6 +58,7 @@ def train(
             ignore_index=padding_index,
         )
 
+        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
@@ -80,23 +90,33 @@ def train(
         example_idx += 1
 
 
-def generate_program(batch_size):
+def generate_program(batch_size: int) -> List[List[int]]:
+    """Generate some simple and short programs for dry-run training."""
     return [
+        # Only two programs.
         [0] if random.randint(0, 1) == 0 else [1, 0]
         for _ in range(batch_size)
     ]
 
 
-def generate_data(program_batch, num_examples, string_size):
-    # Batch is a:
-    # list (batch_size) of tuples (input, output) of list (sequence_length)
-    # of token indices
+def generate_data(
+        program_batch: List[List[int]],
+        num_examples: int,
+        string_size: int) -> List[List[Tuple[List[int], List[int]]]]:
+    """
+    Generate some input-output data for our simple and short programs
+    for dry-run training.
+
+    Batch is a list (batch_size) of tuples (input, output) of
+    list (sequence_length) f token indices.
+    """
     batch = []
     for program in program_batch:
         examples = []
         for _ in range(num_examples):
             input_sequence = [random.randint(0, string_size-1)]
 
+            # Only two programs here (copy and copy-twice).
             if program == [0]:
                 output_sequence = input_sequence
             elif program == [1, 0]:
@@ -111,13 +131,21 @@ def generate_data(program_batch, num_examples, string_size):
     return batch
 
 
-def sample_easy(batch_size, string_size, num_examples):
+def sample_easy(
+        batch_size: int,
+        string_size: int,
+        num_examples: int) -> Tuple[List, List]:
+    """
+    Sample simple and short programs and example input-output data for
+    dry-run training.
+    """
     programs = generate_program(batch_size)
     examples = generate_data(programs, num_examples, string_size)
     return programs, examples
 
 
-def train_easy():
+def train_easy() -> None:
+    """Train smaller model on simple and short programs as dry-run."""
     string_size = 3
     robust_fill = RobustFill(
         string_size=string_size,
@@ -144,7 +172,12 @@ def train_easy():
     )
 
 
-def sample_full(token_tables, batch_size, max_expressions, max_characters):
+def sample_full(
+        token_tables: TokenTables,
+        batch_size: int,
+        max_expressions: int,
+        max_characters: int) -> Tuple[List, List]:
+    """Sample a batch of programs and example input-output data."""
     program_batch, strings_batch = [], []
 
     for _ in range(batch_size):
@@ -163,7 +196,8 @@ def sample_full(token_tables, batch_size, max_expressions, max_characters):
     return program_batch, strings_batch
 
 
-def train_full():
+def train_full() -> None:
+    """Train full model on programs and example input-output data."""
     token_tables = build_token_tables()
 
     checkpoint_filename = './checkpoint.pth'
@@ -193,7 +227,11 @@ def train_full():
     )
 
 
-def main():
+def main() -> None:
+    """
+    Main function responsible for parsing command line arguments and
+    invoking model training.
+    """
     parser = argparse.ArgumentParser(description='Train RobustFill.')
     parser.add_argument(
         '--dry',
