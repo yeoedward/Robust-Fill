@@ -3,6 +3,7 @@ from enum import Enum
 from functools import reduce
 from string import ascii_letters, digits, whitespace
 import re
+from typing import Any, Dict, List, Union
 
 
 # Inclusive-inclusive interval
@@ -17,27 +18,35 @@ CHARACTER = ''.join([ascii_letters, digits, DELIMITER])
 
 
 class DSL(ABC):
+    """Abstract class for all DSL operators."""
+
     @abstractmethod
-    def eval(self, value):
+    def eval(self, value: str) -> str:
+        """Evaluate the DSL operator with the given value."""
         raise NotImplementedError
 
     @abstractmethod
-    def to_string(self, indent, tab):
+    def to_string(self, indent: int, tab: int) -> str:
+        """Return a string representation of the DSL operator."""
         raise NotImplementedError
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.to_string(indent=0, tab=4)
 
     @abstractmethod
-    def to_tokens(self, op_token_table):
+    def to_tokens(self, op_token_table: Dict[Any, int]) -> List[int]:
+        """Convert tree of DSL operators into a list of tokens."""
         raise NotImplementedError
 
 
 class Program(DSL):
+    """Abstract class for Program in grammar."""
     pass
 
 
 class Concat(Program):
+    """Concatenates expressions."""
+
     def __init__(self, *args):
         self.expressions = args
 
@@ -66,18 +75,23 @@ class Concat(Program):
 
 
 class Expression(DSL):
+    """Abstract class for Expression in grammar."""
     pass
 
 
 class Substring(Expression):
+    """Abstract class for Substring in grammar."""
     pass
 
 
 class Nesting(Expression):
+    """Abstract class for Nesting in grammar."""
     pass
 
 
 class Compose(Nesting):
+    """Composes two Nesting expressions."""
+
     def __init__(self, nesting, nesting_or_substring):
         self.nesting = nesting
         self.nesting_or_substring = nesting_or_substring
@@ -106,6 +120,8 @@ class Compose(Nesting):
 
 
 class ConstStr(Expression):
+    """A constant string expression."""
+
     def __init__(self, char):
         self.char = char
 
@@ -120,6 +136,8 @@ class ConstStr(Expression):
 
 
 class SubStr(Substring):
+    """Returns substring of a string."""
+
     def __init__(self, pos1, pos2):
         self.pos1 = pos1
         self.pos2 = pos2
@@ -159,6 +177,8 @@ class SubStr(Substring):
 
 
 class GetSpan(Substring):
+    """Returns substring between two occurrences of regex matches."""
+
     def __init__(self, dsl_regex1, index1, bound1, dsl_regex2, index2, bound2):
         self.dsl_regex1 = dsl_regex1
         self.index1 = index1
@@ -229,6 +249,8 @@ class GetSpan(Substring):
 
 
 class GetToken(Nesting):
+    """Return the ith token that matches the given type."""
+
     def __init__(self, type_, index):
         self.type_ = type_
         self.index = index
@@ -249,6 +271,8 @@ class GetToken(Nesting):
 
 
 class ToCase(Nesting):
+    """Convert the string to the given case."""
+
     def __init__(self, case):
         self.case = case
 
@@ -272,6 +296,8 @@ class ToCase(Nesting):
 
 
 class Replace(Nesting):
+    """Replace the given delimiter with another."""
+
     def __init__(self, delim1, delim2):
         self.delim1 = delim1
         self.delim2 = delim2
@@ -287,6 +313,8 @@ class Replace(Nesting):
 
 
 class Trim(Nesting):
+    """Trim the given string of whitespace."""
+
     def eval(self, value):
         return value.strip()
 
@@ -298,6 +326,8 @@ class Trim(Nesting):
 
 
 class GetUpto(Nesting):
+    """Get the substring that ends at the first occurrence of the regex."""
+
     def __init__(self, dsl_regex):
         self.dsl_regex = dsl_regex
 
@@ -318,6 +348,11 @@ class GetUpto(Nesting):
 
 
 class GetFrom(Nesting):
+    """
+    Get the substring that starts at the end of the
+    first occurrence of the regex.
+    """
+
     def __init__(self, dsl_regex):
         self.dsl_regex = dsl_regex
 
@@ -338,6 +373,11 @@ class GetFrom(Nesting):
 
 
 class GetFirst(Nesting):
+    """
+    Get the concatenation of the first i tokens that match
+    the given type.
+    """
+
     def __init__(self, type_, index):
         self.type_ = type_
         self.index = index
@@ -358,6 +398,8 @@ class GetFirst(Nesting):
 
 
 class GetAll(Nesting):
+    """Get the concatenation of all tokens that match the given type."""
+
     def __init__(self, type_):
         self.type_ = type_
 
@@ -372,6 +414,7 @@ class GetAll(Nesting):
 
 
 class Type(Enum):
+    """The type of token to match."""
     NUMBER = 1
     WORD = 2
     ALPHANUM = 3
@@ -383,22 +426,26 @@ class Type(Enum):
 
 
 class Case(Enum):
+    """The case to convert to."""
     PROPER = 1
     ALL_CAPS = 2
     LOWER = 3
 
 
 class Boundary(Enum):
+    """The side of boundary e.g. the start or end of a match."""
     START = 1
     END = 2
 
 
-def match_type(type_, value):
+def match_type(type_: Type, value: str) -> List[str]:
+    """Helper function to return all matches of a given type."""
     regex = regex_for_type(type_)
     return re.findall(regex, value)
 
 
-def match_dsl_regex(dsl_regex, value):
+def match_dsl_regex(dsl_regex: Union[Type, str], value: str):
+    """Match the given DSL regex."""
     if isinstance(dsl_regex, Type):
         regex = regex_for_type(dsl_regex)
     else:
@@ -411,7 +458,7 @@ def match_dsl_regex(dsl_regex, value):
     ]
 
 
-def regex_for_type(type_):
+def regex_for_type(type_: Type) -> str:
     if type_ == Type.NUMBER:
         return '[0-9]+'
 
@@ -440,7 +487,20 @@ def regex_for_type(type_):
     raise ValueError('Unsupported type: {}'.format(type_))
 
 
-def op_to_string(name, raw_args, indent, recursive=False):
+def op_to_string(
+        name: str,
+        raw_args: List,
+        indent: int,
+        recursive=False) -> str:
+    """
+    Helper function to convert an operator to a pretty string.
+
+    :param name: The name of the operator.
+    :param raw_args: The arguments to the operator.
+    :param indent: The number of spaces to indent the string.
+    :param recursive: Whether to format and nest the printing to allow for
+        args that are operators.
+    """
     indent_str = ' ' * indent
 
     if recursive:

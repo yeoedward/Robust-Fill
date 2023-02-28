@@ -1,24 +1,34 @@
 from collections import namedtuple
+from typing import Dict
 
 import operators as op
 
 
 # Special token for end-of-sequence
 EOS = 'EOS'
+# Named tuple to hold tables mapping integer tokens to
+# operators / string characters.
 TokenTables = namedtuple(
     'TokenTables',
     ['token_op_table', 'op_token_table', 'string_token_table'],
 )
 
 
-def tokenize_string(string, string_token_table):
+def tokenize_string(
+        string: str,
+        string_token_table: Dict[str, int]) -> int:
+    """Convert string into list of integer tokens."""
     return [
         string_token_table[char]
         for char in string
     ]
 
 
-def build_token_tables():
+def build_token_tables() -> TokenTables:
+    """
+    Build tables for converting between integer tokens and
+    operators / string characters.
+    """
     token_op_table = [
         EOS,
         op.Concat,
