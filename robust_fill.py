@@ -116,9 +116,12 @@ class RobustFill(nn.Module):
 
 
 class ProgramDecoder(nn.Module):
+    """Program decoder module."""
+
     def __init__(self, hidden_size, program_size):
         super().__init__()
         self.program_size = program_size
+        self.hidden_size = hidden_size
         self.program_lstm = AttentionLSTM.single_attention(
             input_size=program_size,
             hidden_size=hidden_size,
@@ -128,11 +131,22 @@ class ProgramDecoder(nn.Module):
 
     def forward(
             self,
-            hidden,
-            output_all_hidden,
-            num_examples,
-            max_program_length):
+            hidden: Tuple[torch.Tensor, torch.Tensor],
+            output_all_hidden: Tuple[torch.Tensor, torch.Tensor],
+            num_examples: int,
+            max_program_length: int) -> torch.Tensor:
+        """
+        Forward pass through the decoder.
+
+        :param hidden: Hidden states of LSTM from output encoder.
+        :param output_all_hidden: Entire sequence of hidden states of
+            LSTM from output encoder (to be attended to).
+        :param num_examples: The number of examples in the batch.
+        :param max_program_length: The maximum length of the program
+            to generate.
+        """
         program_sequence = []
+        # List (batch_size) of tensors (1, program_size).
         decoder_input = [
             torch.zeros(1, self.program_size)
             for _ in range(hidden[0].size()[1])
@@ -143,13 +157,15 @@ class ProgramDecoder(nn.Module):
                 hidden=hidden,
                 attended=output_all_hidden,
             )
-            hidden_size = hidden[0].size()[2]
+            # (batch_size, hidden_size, num_examples).
             unpooled = (
                 torch.tanh(self.max_pool_linear(hidden[0][-1, :, :]))
-                .view(-1, num_examples, hidden_size)
+                .view(-1, num_examples, self.hidden_size)
                 .permute(0, 2, 1)
             )
+            # (batch_size, hidden_size)
             pooled = F.max_pool1d(unpooled, num_examples).squeeze(2)
+            # (batch_size, program_size)
             program_embedding = self.softmax_linear(pooled)
 
             program_sequence.append(program_embedding.unsqueeze(0))
