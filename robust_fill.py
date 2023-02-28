@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import Any, List, Tuple
 from torch.nn.utils.rnn import PackedSequence, pack_sequence, pad_sequence
 import torch
 import torch.nn as nn
@@ -163,6 +163,12 @@ class ProgramDecoder(nn.Module):
 
 
 class LuongAttention(nn.Module):
+    """
+    Implements Attention module from:
+    Effective Approaches to Attention-based Neural Machine Translation.
+
+    Uses the "general" content-based function.
+    """
     def __init__(self, linear):
         super().__init__()
         self.linear = linear
@@ -171,7 +177,17 @@ class LuongAttention(nn.Module):
         return LuongAttention(nn.Linear(query_size, query_size))
 
     @staticmethod
-    def _masked_softmax(vectors, sequence_lengths):
+    def _masked_softmax(
+            vectors: torch.Tensor,
+            sequence_lengths: torch.LongTensor) -> torch.Tensor:
+        """
+        Returns the softmax of the given vectors, but masking out values
+        above the sequence length.
+
+        :param vectors: The vectors to compute the softmax over.
+        :param sequence_lengths: The sequence lengths for each batch,
+            beyond which to mask out values.
+        """
         pad(
             vectors,
             sequence_lengths,
@@ -181,9 +197,20 @@ class LuongAttention(nn.Module):
         )
         return F.softmax(vectors, dim=1)
 
-    # attended: (other sequence length x batch size x query size)
-    # Uses the "general" content-based function
-    def forward(self, query, attended, sequence_lengths):
+    def forward(
+            self,
+            query: torch.Tensor,
+            attended: torch.Tensor,
+            sequence_lengths: torch.LongTensor) -> torch.Tensor:
+        """
+        Compute context vector using weighted average of attended vectors.
+
+        :param query: Query vectors (batch size, query size).
+        :param attended: Set of vectors to attend to
+            (other sequence length, batch size, query size).
+        :param sequence_lengths: Sequence lengths used to mask out
+            values at invalid indices.
+        """
         if query.dim() != 2:
             raise ValueError(
                 'Expected query to have 2 dimensions. Instead got {}'.format(
@@ -191,25 +218,36 @@ class LuongAttention(nn.Module):
                 )
             )
 
-        # (batch size x query size)
-        key = self.linear(query)
-        # (batch size x other sequence length)
+        # Pass query through some weights.
+        # (batch size, query size)
+        q = self.linear(query)
+        # Compute alignment by taking dot product of query and
+        # attended vectors.
+        # (batch size, other sequence length)
         align = LuongAttention._masked_softmax(
-            torch.matmul(attended.unsqueeze(2), key.unsqueeze(2))
-            .squeeze(3)
-            .squeeze(2)
-            .transpose(1, 0),
+            # (seq len, batch, 1, 1)
+            torch.matmul(attended.unsqueeze(2), q.unsqueeze(2))
+            .squeeze(3)  # (seq len, batch, 1)
+            .squeeze(2)  # (seq len, batch)
+            .transpose(1, 0),  # (batch, seq len)
             sequence_lengths,
         )
-        # (batch_size x query size)
+        # Compute weighted average using alignment weights.
+        # (batch_size, query size)
         context = (
+            # (batch, 1, query size)
             align.unsqueeze(1).bmm(attended.transpose(1, 0))
-            .squeeze(1)
+            .squeeze(1)  # (batch, query size)
         )
         return context
 
 
 class LSTMAdapter(nn.Module):
+    """
+    LSTM module that conforms to the same interface as
+    the attention-variants.
+    """
+
     def __init__(self, lstm):
         super().__init__()
         self.lstm = lstm
@@ -218,23 +256,34 @@ class LSTMAdapter(nn.Module):
     def create(input_size, hidden_size):
         return LSTMAdapter(nn.LSTM(input_size, hidden_size))
 
-    # attended_args is here to conform to the same interfaces
-    # as the attention-variants
     def forward(self, input_, hidden, attended_args):
-        if attended_args is not None:
-            raise ValueError('LSTM doesnt use the arg "attended"')
-
         _, hidden = self.lstm(input_.unsqueeze(0), hidden)
         return hidden
 
 
 class SingleAttention(nn.Module):
+    """Attention-LSTM module with single attention."""
+
     def __init__(self, input_size, hidden_size):
         super().__init__()
         self.attention = LuongAttention.create(hidden_size)
         self.lstm = nn.LSTM(input_size + hidden_size, hidden_size)
 
-    def forward(self, input_, hidden, attended_args):
+    def forward(
+            self,
+            input_: torch.Tensor,
+            hidden: torch.Tensor,
+            attended_args: Tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
+        """
+        Forward pass for the single attention-lstm module.
+
+        :param input_: The input tensor (batch_size, input_size).
+        :param hidden: The hidden (+ cell) states of the
+            LSTM (1, batch_size, hidden_size).
+        :param attended_args: The tuple of:
+            1. The attended tensor (sequence_length, batch_size, hidden_size).
+            2. The sequence lengths (batch_size).
+        """
         attended, sequence_lengths = attended_args
         context = self.attention(
             hidden[0].squeeze(0),
@@ -242,6 +291,7 @@ class SingleAttention(nn.Module):
             sequence_lengths,
         )
         _, hidden = self.lstm(
+            # (1, batch_size, input_size + hidden_size)
             torch.cat((input_, context), 1).unsqueeze(0),
             hidden,
         )
@@ -462,7 +512,19 @@ class AttentionLSTM(nn.Module):
         return (unsorted_all_hidden, sequence_lengths), unsorted_final_hidden
 
 
-def expand_vector(vector, dim, num_dims):
+def expand_vector(
+        vector: torch.Tensor,
+        dim: int,
+        num_dims: int) -> torch.Tensor:
+    """
+    Rehapes a uni-dimensional vector to a multi-dimensional tensor,
+    with 1s in all dimensions except the one specified.
+
+    :param vector: The vector to reshape.
+    :param dim: The dimension in the new tensor that the vector's
+        values will be along.
+    :param num_dims: The number of dimensions in the new tensor.
+    """
     if vector.dim() != 1:
         raise ValueError('Expected vector of dim 1. Instead got {}.'.format(
             vector.dim(),
@@ -474,7 +536,16 @@ def expand_vector(vector, dim, num_dims):
     ])
 
 
-def pad(tensor, sequence_lengths, value, batch_dim, sequence_dim):
+def pad(
+        tensor: torch.Tensor,
+        sequence_lengths: torch.Tensor,
+        value: Any,
+        batch_dim: int,
+        sequence_dim: int) -> None:
+    """
+    Pad the tensor with the given value at indices where it exceeds
+    the sequence length for that batch.
+    """
     max_length = tensor.size()[sequence_dim]
     indices = expand_vector(
         torch.arange(max_length),
