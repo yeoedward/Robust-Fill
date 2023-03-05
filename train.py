@@ -14,6 +14,9 @@ from tokens import TokenTables, build_token_tables, tokenize_string
 import operators as op
 
 
+# Number of times to retry if cuda OOM is encountered.
+OOM_RETRIES = 2
+
 # Misc info returned by training_step() for logging.
 StepInfo = namedtuple(
     'StepInfo',
@@ -95,11 +98,18 @@ def train(
 
     example_idx = 0
     while True:
-        step_info = training_step(
-            robust_fill=robust_fill,
-            sample=sample,
-            optimizer=optimizer,
-            device=device)
+        for i in range(OOM_RETRIES + 1):
+            try:
+                step_info = training_step(
+                    robust_fill=robust_fill,
+                    sample=sample,
+                    optimizer=optimizer,
+                    device=device)
+                break
+            except torch.cuda.OutOfMemoryError:
+                if i == OOM_RETRIES:
+                    raise
+                print('Out of memory, retrying')
 
         if example_idx % checkpoint_step_size == 0:
             print('Checkpointing at example {}'.format(example_idx))
