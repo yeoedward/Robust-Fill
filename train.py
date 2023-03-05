@@ -1,7 +1,7 @@
 import argparse
 import pprint as pp
 import random
-from typing import Callable, List, Tuple
+from typing import Callable, List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -22,15 +22,18 @@ def train(
         robust_fill: RobustFill,
         optimizer: optim.Optimizer,
         sample: Callable[[], Tuple[List, List]],
+        device: Optional[torch.device],
         checkpoint_filename: str,
         checkpoint_step_size: int,
         checkpoint_print_tensors: bool) -> None:
     """Infinite loop for training."""
+    robust_fill.to(device)
+
     example_idx = 0
     while True:
         expected_programs, examples = sample()
         max_length = max_program_length(expected_programs)
-        actual_programs = robust_fill(examples, max_length)
+        actual_programs = robust_fill(examples, max_length, device=device)
 
         # Compute cross-entropy loss ignoring padding tokens due to
         # different program lengths.
@@ -47,11 +50,11 @@ def train(
         )
         # Convert expected programs from list of lists of ints (uneven lengths)
         # to a tensor of (batch size * max length) with padding tokens.
-        padded_expected_programs = torch.LongTensor([
+        padded_expected_programs = torch.tensor([
                 program[i] if i < len(program) else padding_index
                 for program in expected_programs
                 for i in range(max_length)
-        ])
+        ], device=device)
         loss = F.cross_entropy(
             reshaped_actual_programs,
             padded_expected_programs,
@@ -166,6 +169,7 @@ def train_easy() -> None:
         robust_fill=robust_fill,
         optimizer=optimizer,
         sample=sample,
+        device=None,  # CPU training.
         checkpoint_filename=None,
         checkpoint_step_size=100,
         checkpoint_print_tensors=True,
@@ -217,10 +221,19 @@ def train_full() -> None:
             max_characters=50,
         )
 
+    device = None
+    if torch.backends.mps.is_available() and torch.backends.mps.is_built():
+        device = torch.device('mps')
+        print('Using device `mps`')
+    elif torch.cuda.is_available():
+        device = torch.device('cuda')
+        print('Using device `cuda`')
+
     train(
         robust_fill=robust_fill,
         optimizer=optimizer,
         sample=sample,
+        device=device,
         checkpoint_filename=checkpoint_filename,
         checkpoint_step_size=1,
         checkpoint_print_tensors=False,

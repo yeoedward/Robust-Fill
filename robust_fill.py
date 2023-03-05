@@ -1,4 +1,4 @@
-from typing import Any, List, Tuple
+from typing import Any, List, Optional, Tuple
 from torch.nn.utils.rnn import PackedSequence, pack_sequence, pad_sequence
 import torch
 import torch.nn as nn
@@ -72,17 +72,24 @@ class RobustFill(nn.Module):
         ]
         return input_batch, output_batch
 
-    def _embed_batch(self, batch: List) -> List[torch.Tensor]:
+    def _embed_batch(
+            self,
+            batch: List,
+            device: Optional[torch.device]) -> List[torch.Tensor]:
         """
         Convert each list of tokens in a batch into a tensor of
         shape (sequence_length, string_embedding_size).
         """
         return [
-            self.embedding(torch.LongTensor(sequence))
+            self.embedding(torch.tensor(sequence, device=device))
             for sequence in batch
         ]
 
-    def forward(self, batch: List, max_program_length: int):
+    def forward(
+            self,
+            batch: List,
+            max_program_length: int,
+            device: Optional[torch.device] = None):
         """
         Forward pass through RobustFill.
 
@@ -90,28 +97,33 @@ class RobustFill(nn.Module):
             list (sequence_length) of token indices.
         :param max_program_length: The maximum length of the
             program to generate.
+        :param device: The device to send the input data to.
         """
         num_examples = RobustFill._check_num_examples(batch)
         input_batch, output_batch = RobustFill._split_flatten_examples(batch)
 
         # List (batch_size) of
         # tensors (sequence_length, string_embedding_size).
-        input_batch = self._embed_batch(input_batch)
+        input_batch = self._embed_batch(input_batch, device=device)
         # List (batch_size) of
         # tensors (sequence_length, string_embedding_size).
-        output_batch = self._embed_batch(output_batch)
+        output_batch = self._embed_batch(output_batch, device=device)
 
-        input_all_hidden, hidden = self.input_encoder(input_batch)
+        input_all_hidden, hidden = self.input_encoder(
+            input_batch,
+            device=device)
         output_all_hidden, hidden = self.output_encoder(
             output_batch,
             hidden=hidden,
             attended=input_all_hidden,
+            device=device,
         )
         return self.program_decoder(
             hidden=hidden,
             output_all_hidden=output_all_hidden,
             num_examples=num_examples,
             max_program_length=max_program_length,
+            device=device,
         )
 
 
@@ -134,7 +146,8 @@ class ProgramDecoder(nn.Module):
             hidden: Tuple[torch.Tensor, torch.Tensor],
             output_all_hidden: Tuple[torch.Tensor, torch.Tensor],
             num_examples: int,
-            max_program_length: int) -> torch.Tensor:
+            max_program_length: int,
+            device: Optional[torch.device]) -> torch.Tensor:
         """
         Forward pass through the decoder.
 
@@ -148,7 +161,7 @@ class ProgramDecoder(nn.Module):
         program_sequence = []
         # List (batch_size) of tensors (1, program_size).
         decoder_input = [
-            torch.zeros(1, self.program_size)
+            torch.zeros(1, self.program_size, device=device)
             for _ in range(hidden[0].size()[1])
         ]
         for _ in range(max_program_length):
@@ -156,12 +169,16 @@ class ProgramDecoder(nn.Module):
                 decoder_input,
                 hidden=hidden,
                 attended=output_all_hidden,
+                device=device,
             )
             # (batch_size, hidden_size, num_examples).
             unpooled = (
                 torch.tanh(self.max_pool_linear(hidden[0][-1, :, :]))
                 .view(-1, num_examples, self.hidden_size)
                 .permute(0, 2, 1)
+                # Necessary for 'mps' device otherwise maxpool
+                # throws an error.
+                .contiguous()
             )
             # (batch_size, hidden_size)
             pooled = F.max_pool1d(unpooled, num_examples).squeeze(2)
@@ -195,7 +212,8 @@ class LuongAttention(nn.Module):
     @staticmethod
     def _masked_softmax(
             vectors: torch.Tensor,
-            sequence_lengths: torch.LongTensor) -> torch.Tensor:
+            sequence_lengths: torch.LongTensor,
+            device: Optional[torch.device]) -> torch.Tensor:
         """
         Returns the softmax of the given vectors, but masking out values
         above the sequence length.
@@ -210,6 +228,7 @@ class LuongAttention(nn.Module):
             float('-inf'),
             batch_dim=0,
             sequence_dim=1,
+            device=device,
         )
         return F.softmax(vectors, dim=1)
 
@@ -217,7 +236,8 @@ class LuongAttention(nn.Module):
             self,
             query: torch.Tensor,
             attended: torch.Tensor,
-            sequence_lengths: torch.LongTensor) -> torch.Tensor:
+            sequence_lengths: torch.LongTensor,
+            device: Optional[torch.device]) -> torch.Tensor:
         """
         Compute context vector using weighted average of attended vectors.
 
@@ -226,6 +246,7 @@ class LuongAttention(nn.Module):
             (other sequence length, batch size, query size).
         :param sequence_lengths: Sequence lengths used to mask out
             values at invalid indices.
+        :param device: The device to send data to.
         """
         if query.dim() != 2:
             raise ValueError(
@@ -247,6 +268,7 @@ class LuongAttention(nn.Module):
             .squeeze(2)  # (seq len, batch)
             .transpose(1, 0),  # (batch, seq len)
             sequence_lengths,
+            device=device,
         )
         # Compute weighted average using alignment weights.
         # (batch_size, query size)
@@ -272,7 +294,12 @@ class LSTMAdapter(nn.Module):
     def create(input_size, hidden_size):
         return LSTMAdapter(nn.LSTM(input_size, hidden_size))
 
-    def forward(self, input_, hidden, attended_args):
+    def forward(
+            self,
+            input_: torch.Tensor,
+            hidden: torch.Tensor,
+            attended_args: Tuple[torch.Tensor, torch.Tensor],
+            device: Optional[torch.device]):
         _, hidden = self.lstm(input_.unsqueeze(0), hidden)
         return hidden
 
@@ -289,7 +316,8 @@ class SingleAttention(nn.Module):
             self,
             input_: torch.Tensor,
             hidden: torch.Tensor,
-            attended_args: Tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
+            attended_args: Tuple[torch.Tensor, torch.Tensor],
+            device: Optional[torch.device]) -> torch.Tensor:
         """
         Forward pass for the single attention-lstm module.
 
@@ -299,12 +327,14 @@ class SingleAttention(nn.Module):
         :param attended_args: The tuple of:
             1. The attended tensor (sequence_length, batch_size, hidden_size).
             2. The sequence lengths (batch_size).
+        :param device: The device to send data to.
         """
         attended, sequence_lengths = attended_args
         context = self.attention(
             hidden[0].squeeze(0),
             attended,
             sequence_lengths,
+            device=device,
         )
         _, hidden = self.lstm(
             # (1, batch_size, input_size + hidden_size)
@@ -417,6 +447,7 @@ class AttentionLSTM(nn.Module):
             packed: PackedSequence,
             hidden: Tuple[torch.Tensor, torch.Tensor],
             attended: Tuple[torch.Tensor, torch.Tensor],
+            device: Optional[torch.device],
             ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Sequentially invoke the RNN on the packed sequence with
@@ -459,6 +490,7 @@ class AttentionLSTM(nn.Module):
                 input_=timestep_data,
                 hidden=hidden,
                 attended_args=attended,
+                device=device,
             )
 
             all_hn.append(hidden[0].squeeze(0))
@@ -486,7 +518,8 @@ class AttentionLSTM(nn.Module):
             self,
             sequence_batch: List[torch.Tensor],
             hidden: Tuple[torch.Tensor, torch.Tensor] = None,
-            attended: Tuple[torch.Tensor, torch.Tensor] = None):
+            attended: Tuple[torch.Tensor, torch.Tensor] = None,
+            device: Optional[torch.device] = None):
         """
         Forward pass through the attention-lstm module.
 
@@ -498,6 +531,7 @@ class AttentionLSTM(nn.Module):
             1. Set of vectors being attended to
                 (sequence_length, batch_size, hidden_size).
             2. Sequence lengths (batch_size).
+        :param device: The device to send data to.
         """
         if not isinstance(sequence_batch, list):
             raise ValueError(
@@ -516,15 +550,16 @@ class AttentionLSTM(nn.Module):
             packed,
             sorted_hidden,
             sorted_attended,
+            device=device,
         )
         unsorted_all_hidden, unsorted_final_hidden = AttentionLSTM._unsort(
             all_hidden=all_hidden,
             final_hidden=final_hidden,
             sorted_indices=sorted_indices,
         )
-        sequence_lengths = torch.LongTensor([
+        sequence_lengths = torch.tensor([
             s.shape[0] for s in sequence_batch
-        ])
+        ], device=device)
         return (unsorted_all_hidden, sequence_lengths), unsorted_final_hidden
 
 
@@ -557,14 +592,15 @@ def pad(
         sequence_lengths: torch.Tensor,
         value: Any,
         batch_dim: int,
-        sequence_dim: int) -> None:
+        sequence_dim: int,
+        device: Optional[torch.device]) -> None:
     """
     Pad the tensor with the given value at indices where it exceeds
     the sequence length for that batch.
     """
     max_length = tensor.size()[sequence_dim]
     indices = expand_vector(
-        torch.arange(max_length),
+        torch.arange(max_length, device=device),
         sequence_dim,
         tensor.dim(),
     )
