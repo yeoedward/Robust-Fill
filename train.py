@@ -27,6 +27,11 @@ def train(
         checkpoint_step_size: int,
         checkpoint_print_tensors: bool) -> None:
     """Infinite loop for training."""
+    if checkpoint_filename is not None:
+        print('Starting model from existing checkpoint file: '
+              f'{checkpoint_filename}')
+        robust_fill.load_state_dict(torch.load(checkpoint_filename))
+
     robust_fill.to(device)
 
     example_idx = 0
@@ -216,18 +221,19 @@ def train_full() -> None:
     def sample():
         return sample_full(
             token_tables,
-            batch_size=128,
+            batch_size=32,
             max_expressions=10,
             max_characters=50,
         )
 
     device = None
-    if torch.backends.mps.is_available() and torch.backends.mps.is_built():
-        device = torch.device('mps')
-        print('Using device `mps`')
-    elif torch.cuda.is_available():
+    if torch.cuda.is_available():
         device = torch.device('cuda')
         print('Using device `cuda`')
+    # Device `mps` doesn't currently work because of Pytorch bugs.
+    # elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
+    #    device = torch.device('mps')
+    #    print('Using device `mps`')
 
     train(
         robust_fill=robust_fill,
