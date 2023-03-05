@@ -1,10 +1,12 @@
 import argparse
 from collections import namedtuple
+import os
 import pprint as pp
 import random
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, NamedTuple, Optional, Tuple
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
@@ -16,6 +18,18 @@ import operators as op
 
 # Number of times to retry if cuda OOM is encountered.
 OOM_RETRIES = 2
+
+
+# Configuration for training.
+class Config(NamedTuple):
+    model: nn.Module
+    sample: Callable[[], Tuple[List, List]]
+    optimizer: optim.Optimizer
+    device: Optional[torch.device]
+    checkpoint_filename: str
+    checkpoint_step_size: int
+    checkpoint_print_tensors: bool
+
 
 # Misc info returned by training_step() for logging.
 StepInfo = namedtuple(
@@ -39,6 +53,7 @@ def training_step(
         sample: Callable[[], Tuple[List, List]],
         optimizer: optim.Optimizer,
         device: Optional[torch.device]) -> StepInfo:
+    """Execute a single training step."""
     expected_programs, examples = sample()
     max_length = max_program_length(expected_programs)
     actual_programs = robust_fill(examples, max_length, device=device)
@@ -80,41 +95,35 @@ def training_step(
         actual_programs=actual_programs)
 
 
-def train(
-        robust_fill: RobustFill,
-        optimizer: optim.Optimizer,
-        sample: Callable[[], Tuple[List, List]],
-        device: Optional[torch.device],
-        checkpoint_filename: str,
-        checkpoint_step_size: int,
-        checkpoint_print_tensors: bool) -> None:
+def train(config: Config) -> None:
     """Infinite loop for training."""
-    if checkpoint_filename is not None:
+    if (config.checkpoint_filename is not None
+       and os.path.exists(config.checkpoint_filename)):
         print('Starting model from existing checkpoint file: '
-              f'{checkpoint_filename}')
-        robust_fill.load_state_dict(torch.load(checkpoint_filename))
+              f'{config.checkpoint_filename}')
+        config.model.load_state_dict(torch.load(config.checkpoint_filename))
 
-    robust_fill.to(device)
+    config.model.to(config.device)
 
     example_idx = 0
     while True:
         for i in range(OOM_RETRIES + 1):
             try:
                 step_info = training_step(
-                    robust_fill=robust_fill,
-                    sample=sample,
-                    optimizer=optimizer,
-                    device=device)
+                    robust_fill=config.model,
+                    sample=config.sample,
+                    optimizer=config.optimizer,
+                    device=config.device)
                 break
             except torch.cuda.OutOfMemoryError:
                 if i == OOM_RETRIES:
                     raise
                 print('Out of memory, retrying')
 
-        if example_idx % checkpoint_step_size == 0:
+        if example_idx % config.checkpoint_step_size == 0:
             print('Checkpointing at example {}'.format(example_idx))
             print('Loss: {}'.format(step_info.loss))
-            if checkpoint_print_tensors:
+            if config.checkpoint_print_tensors:
                 print_batch_limit = 3
 
                 print('Examples:')
@@ -129,9 +138,11 @@ def train(
                     .transpose(1, 0)[:print_batch_limit, :, :]
                 )
 
-            if checkpoint_filename is not None:
-                print('Saving to file {}'.format(checkpoint_filename))
-                torch.save(robust_fill.state_dict(), checkpoint_filename)
+            if config.checkpoint_filename is not None:
+                print('Saving to file {}'.format(config.checkpoint_filename))
+                torch.save(
+                    config.model.state_dict(),
+                    config.checkpoint_filename)
 
             print('Done')
 
@@ -192,8 +203,11 @@ def sample_easy(
     return programs, examples
 
 
-def train_easy() -> None:
-    """Train smaller model on simple and short programs as dry-run."""
+def easy_config() -> Config:
+    """
+    Return config for smaller model on simple and short programs
+    as dry-run.
+    """
     string_size = 3
     robust_fill = RobustFill(
         string_size=string_size,
@@ -210,8 +224,8 @@ def train_easy() -> None:
             num_examples=2,
         )
 
-    train(
-        robust_fill=robust_fill,
+    return Config(
+        model=robust_fill,
         optimizer=optimizer,
         sample=sample,
         device=None,  # CPU training.
@@ -245,8 +259,10 @@ def sample_full(
     return program_batch, strings_batch
 
 
-def train_full() -> None:
-    """Train full model on programs and example input-output data."""
+def full_config() -> Config:
+    """
+    Return config for full model on programs and example input-output data.
+    """
     token_tables = build_token_tables()
 
     checkpoint_filename = './checkpoint.pth'
@@ -275,8 +291,8 @@ def train_full() -> None:
     #    device = torch.device('mps')
     #    print('Using device `mps`')
 
-    train(
-        robust_fill=robust_fill,
+    return Config(
+        model=robust_fill,
         optimizer=optimizer,
         sample=sample,
         device=device,
@@ -303,9 +319,11 @@ def main() -> None:
     random.seed(420)
 
     if args.dry:
-        train_easy()
+        config = easy_config()
     else:
-        train_full()
+        config = full_config()
+
+    train(config)
 
 
 if __name__ == '__main__':
