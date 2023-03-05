@@ -207,8 +207,8 @@ def train_full() -> None:
     checkpoint_filename = './checkpoint.pth'
     robust_fill = RobustFill(
         string_size=len(op.CHARACTER),
-        string_embedding_size=32,
-        hidden_size=256,
+        string_embedding_size=128,
+        hidden_size=512,
         program_size=len(token_tables.op_token_table),
     )
     optimizer = optim.SGD(robust_fill.parameters(), lr=0.01)
@@ -216,8 +216,8 @@ def train_full() -> None:
     def sample():
         return sample_full(
             token_tables,
-            batch_size=32,
-            max_expressions=3,
+            batch_size=128,
+            max_expressions=10,
             max_characters=50,
         )
 
