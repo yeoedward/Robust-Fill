@@ -1,4 +1,5 @@
 import argparse
+from collections import namedtuple
 import pprint as pp
 import random
 from typing import Callable, List, Optional, Tuple
@@ -13,9 +14,67 @@ from tokens import TokenTables, build_token_tables, tokenize_string
 import operators as op
 
 
+# Misc info returned by training_step() for logging.
+StepInfo = namedtuple(
+    'StepInfo',
+    [
+        'loss',
+        'examples',
+        'expected_programs',
+        'actual_programs',
+    ],
+)
+
+
 def max_program_length(expected_programs: List[List[int]]) -> int:
     """Return length of longest program."""
     return max([len(program) for program in expected_programs])
+
+
+def training_step(
+        robust_fill: RobustFill,
+        sample: Callable[[], Tuple[List, List]],
+        optimizer: optim.Optimizer,
+        device: Optional[torch.device]) -> StepInfo:
+    expected_programs, examples = sample()
+    max_length = max_program_length(expected_programs)
+    actual_programs = robust_fill(examples, max_length, device=device)
+
+    # Compute cross-entropy loss ignoring padding tokens due to
+    # different program lengths.
+    program_size = actual_programs.size()[2]
+    padding_index = -1
+    # Reshape actual_programs (seq length, batch size, program size)
+    # to (batch size * seq length, program size).
+    reshaped_actual_programs = (
+        actual_programs.transpose(1, 0)
+        # Necessary because .view() expects contiguity but
+        # .transpose() doesn't copy.
+        .contiguous()
+        .view(-1, program_size)
+    )
+    # Convert expected programs from list of lists of ints (uneven lengths)
+    # to a tensor of (batch size * max length) with padding tokens.
+    padded_expected_programs = torch.tensor([
+            program[i] if i < len(program) else padding_index
+            for program in expected_programs
+            for i in range(max_length)
+    ], device=device)
+    loss = F.cross_entropy(
+        reshaped_actual_programs,
+        padded_expected_programs,
+        ignore_index=padding_index,
+    )
+
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+
+    return StepInfo(
+        loss=loss,
+        examples=examples,
+        expected_programs=expected_programs,
+        actual_programs=actual_programs)
 
 
 def train(
@@ -36,56 +95,27 @@ def train(
 
     example_idx = 0
     while True:
-        expected_programs, examples = sample()
-        max_length = max_program_length(expected_programs)
-        actual_programs = robust_fill(examples, max_length, device=device)
-
-        # Compute cross-entropy loss ignoring padding tokens due to
-        # different program lengths.
-        program_size = actual_programs.size()[2]
-        padding_index = -1
-        # Reshape actual_programs (seq length, batch size, program size)
-        # to (batch size * seq length, program size).
-        reshaped_actual_programs = (
-            actual_programs.transpose(1, 0)
-            # Necessary because .view() expects contiguity but
-            # .transpose() doesn't copy.
-            .contiguous()
-            .view(-1, program_size)
-        )
-        # Convert expected programs from list of lists of ints (uneven lengths)
-        # to a tensor of (batch size * max length) with padding tokens.
-        padded_expected_programs = torch.tensor([
-                program[i] if i < len(program) else padding_index
-                for program in expected_programs
-                for i in range(max_length)
-        ], device=device)
-        loss = F.cross_entropy(
-            reshaped_actual_programs,
-            padded_expected_programs,
-            ignore_index=padding_index,
-        )
-
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        step_info = training_step(
+            robust_fill=robust_fill,
+            sample=sample,
+            optimizer=optimizer,
+            device=device)
 
         if example_idx % checkpoint_step_size == 0:
             print('Checkpointing at example {}'.format(example_idx))
-            print('Loss: {}'.format(loss))
-
+            print('Loss: {}'.format(step_info.loss))
             if checkpoint_print_tensors:
                 print_batch_limit = 3
 
                 print('Examples:')
-                pp.pprint(examples[:print_batch_limit])
+                pp.pprint(step_info.examples[:print_batch_limit])
 
                 print('Expected programs:')
-                print(expected_programs[:print_batch_limit])
+                print(step_info.expected_programs[:print_batch_limit])
 
                 print('Actual programs:')
                 print(
-                    F.softmax(actual_programs, dim=2)
+                    F.softmax(step_info.actual_programs, dim=2)
                     .transpose(1, 0)[:print_batch_limit, :, :]
                 )
 
