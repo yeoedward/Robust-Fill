@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from torch.profiler import profile, ProfilerActivity
 
 from robust_fill import RobustFill
 from sample import sample_example
@@ -48,15 +49,11 @@ def max_program_length(expected_programs: List[List[int]]) -> int:
     return max([len(program) for program in expected_programs])
 
 
-def training_step(
-        robust_fill: RobustFill,
-        sample: Callable[[], Tuple[List, List]],
-        optimizer: optim.Optimizer,
-        device: Optional[torch.device]) -> StepInfo:
+def training_step(config: Config) -> StepInfo:
     """Execute a single training step."""
-    expected_programs, examples = sample()
+    expected_programs, examples = config.sample()
     max_length = max_program_length(expected_programs)
-    actual_programs = robust_fill(examples, max_length, device=device)
+    actual_programs = config.model(examples, max_length, device=config.device)
 
     # Compute cross-entropy loss ignoring padding tokens due to
     # different program lengths.
@@ -77,16 +74,16 @@ def training_step(
             program[i] if i < len(program) else padding_index
             for program in expected_programs
             for i in range(max_length)
-    ], device=device)
+    ], device=config.device)
     loss = F.cross_entropy(
         reshaped_actual_programs,
         padded_expected_programs,
         ignore_index=padding_index,
     )
 
-    optimizer.zero_grad()
+    config.optimizer.zero_grad()
     loss.backward()
-    optimizer.step()
+    config.optimizer.step()
 
     return StepInfo(
         loss=loss,
@@ -109,11 +106,7 @@ def train(config: Config) -> None:
     while True:
         for i in range(OOM_RETRIES + 1):
             try:
-                step_info = training_step(
-                    robust_fill=config.model,
-                    sample=config.sample,
-                    optimizer=config.optimizer,
-                    device=config.device)
+                step_info = training_step(config)
                 break
             except torch.cuda.OutOfMemoryError:
                 if i == OOM_RETRIES:
@@ -302,6 +295,17 @@ def full_config() -> Config:
     )
 
 
+def profile_training(config: Config) -> None:
+    # TODO: Remove after implementing completely.
+    raise NotImplementedError
+    with profile(
+            activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+            record_shapes=True,
+            profile_memory=True,
+            use_cuda=True):
+        training_step(config)
+
+
 def main() -> None:
     """
     Main function responsible for parsing command line arguments and
@@ -309,21 +313,24 @@ def main() -> None:
     """
     parser = argparse.ArgumentParser(description='Train RobustFill.')
     parser.add_argument(
-        '--dry',
-        action='store_true',
-        help='run smaller network on easier version of the problem',
+        '-m', '--mode',
+        choices=['full', 'easy', 'profile'],
+        help='Training mode to run in.',
     )
     args = parser.parse_args()
 
     torch.manual_seed(1337)
     random.seed(420)
 
-    if args.dry:
-        config = easy_config()
-    else:
+    if args.mode == 'full':
         config = full_config()
-
-    train(config)
+        train(config)
+    if args.mode == 'profile':
+        config = full_config()
+        profile_training(config)
+    else:
+        config = easy_config()
+        train(config)
 
 
 if __name__ == '__main__':
