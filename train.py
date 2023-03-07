@@ -26,6 +26,7 @@ class Config(NamedTuple):
     model: nn.Module
     sample: Callable[[], Tuple[List, List]]
     optimizer: optim.Optimizer
+    clip_grad_value: float
     device: Optional[torch.device]
     checkpoint_filename: str
     checkpoint_step_size: int
@@ -83,6 +84,9 @@ def training_step(config: Config) -> StepInfo:
 
     config.optimizer.zero_grad()
     loss.backward()
+    nn.utils.clip_grad_value_(
+        config.model.parameters(),
+        clip_value=config.clip_grad_value)
     config.optimizer.step()
 
     return StepInfo(
@@ -220,6 +224,7 @@ def easy_config() -> Config:
     return Config(
         model=robust_fill,
         optimizer=optimizer,
+        clip_grad_value=1.0,
         sample=sample,
         device=None,  # CPU training.
         checkpoint_filename=None,
@@ -265,7 +270,7 @@ def full_config() -> Config:
         hidden_size=512,
         program_size=len(token_tables.op_token_table),
     )
-    optimizer = optim.SGD(robust_fill.parameters(), lr=0.01)
+    optimizer = optim.SGD(robust_fill.parameters(), lr=0.001)
 
     def sample():
         return sample_full(
@@ -287,6 +292,7 @@ def full_config() -> Config:
     return Config(
         model=robust_fill,
         optimizer=optimizer,
+        clip_grad_value=1.0,
         sample=sample,
         device=device,
         checkpoint_filename=checkpoint_filename,
