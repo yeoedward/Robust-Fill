@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.profiler import profile, ProfilerActivity
+from torch.profiler import profile, ProfilerActivity, schedule
 
 from robust_fill import RobustFill
 from sample import sample_example
@@ -301,15 +301,23 @@ def full_config() -> Config:
     )
 
 
-def profile_training(config: Config) -> None:
-    # TODO: Remove after implementing completely.
-    raise NotImplementedError
+def profile_training() -> profile:
+    """Use PyTorch profiler to profile training step."""
+    config = full_config()
+    sch = schedule(
+        wait=1,
+        warmup=1,
+        active=2,
+    )
     with profile(
             activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+            schedule=sch,
             record_shapes=True,
-            profile_memory=True,
-            use_cuda=True):
-        training_step(config)
+            profile_memory=True) as prof:
+        for _ in range(12):
+            training_step(config)
+            prof.step()
+    return prof
 
 
 def main() -> None:
@@ -320,7 +328,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description='Train RobustFill.')
     parser.add_argument(
         '-m', '--mode',
-        choices=['full', 'easy', 'profile'],
+        choices=['full', 'easy'],
         help='Training mode to run in.',
     )
     args = parser.parse_args()
@@ -331,10 +339,7 @@ def main() -> None:
     if args.mode == 'full':
         config = full_config()
         train(config)
-    if args.mode == 'profile':
-        config = full_config()
-        profile_training(config)
-    else:
+    elif args.mode == 'easy':
         config = easy_config()
         train(config)
 
