@@ -304,6 +304,7 @@ def full_config() -> Config:
 def profile_training() -> profile:
     """Use PyTorch profiler to profile training step."""
     config = full_config()
+    config.model.to(config.device)
     sch = schedule(
         wait=1,
         warmup=1,
