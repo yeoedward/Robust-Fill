@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.profiler import profile, ProfilerActivity, schedule
+from torch.profiler import profile, ProfilerActivity
 
 from robust_fill import RobustFill
 from sample import sample_example
@@ -305,19 +305,8 @@ def profile_training() -> profile:
     """Use PyTorch profiler to profile training step."""
     config = full_config()
     config.model.to(config.device)
-    sch = schedule(
-        wait=1,
-        warmup=1,
-        active=2,
-    )
-    with profile(
-            activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
-            schedule=sch,
-            record_shapes=True,
-            profile_memory=True) as prof:
-        for _ in range(12):
-            training_step(config)
-            prof.step()
+    with profile(activities=[ProfilerActivity.CUDA]) as prof:
+        training_step(config)
     return prof
 
 
