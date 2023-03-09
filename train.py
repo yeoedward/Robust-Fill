@@ -321,7 +321,6 @@ def profile_training() -> None:
         for _ in range(10):
             training_step(config)
             prof.step()
-    prof.export_chrome_trace('./profile/trace.json')
 
 
 def main() -> None:
