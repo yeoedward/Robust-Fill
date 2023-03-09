@@ -1,5 +1,10 @@
 from typing import Any, List, Optional, Tuple
-from torch.nn.utils.rnn import PackedSequence, pack_sequence, pad_sequence
+from torch.nn.utils.rnn import (
+    PackedSequence,
+    pad_sequence,
+    pack_padded_sequence,
+    pad_packed_sequence,
+)
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -25,7 +30,7 @@ class RobustFill(nn.Module):
         self.embedding = nn.Embedding(string_size, string_embedding_size)
         # TODO: Create static factory methods for different configurations
         # e.g. Basic seq-to-seq vs attention A vs attention B...
-        self.input_encoder = AttentionLSTM.lstm(
+        self.input_encoder = nn.LSTM(
             input_size=string_embedding_size,
             hidden_size=hidden_size,
         )
@@ -72,18 +77,25 @@ class RobustFill(nn.Module):
         ]
         return input_batch, output_batch
 
-    def _embed_batch(
+    def _embed_and_pack(
             self,
             batch: List,
-            device: Optional[torch.device]) -> List[torch.Tensor]:
+            device: Optional[torch.device],
+            ) -> Tuple[PackedSequence, torch.Tensor]:
         """
         Convert each list of tokens in a batch into a tensor of
         shape (sequence_length, string_embedding_size).
         """
-        return [
-            self.embedding(torch.tensor(sequence, device=device))
-            for sequence in batch
-        ]
+        lengths = torch.as_tensor([len(v) for v in batch])
+        # (batch_size, sequence_length).
+        padded = pad_sequence([
+            torch.as_tensor(v, device=device)
+            for v in batch
+        ])
+        # (batch_size, sequence_length, string_embedding_size).
+        embedded = self.embedding(padded)
+        packed = pack_padded_sequence(embedded, lengths, enforce_sorted=False)
+        return packed, lengths
 
     def forward(
             self,
@@ -102,25 +114,24 @@ class RobustFill(nn.Module):
         num_examples = RobustFill._check_num_examples(batch)
         input_batch, output_batch = RobustFill._split_flatten_examples(batch)
 
-        # List (batch_size) of
-        # tensors (sequence_length, string_embedding_size).
-        input_batch = self._embed_batch(input_batch, device=device)
-        # List (batch_size) of
-        # tensors (sequence_length, string_embedding_size).
-        output_batch = self._embed_batch(output_batch, device=device)
+        packed_input, _ = self._embed_and_pack(input_batch, device=device)
+        packed_input_all_hidden, hidden = self.input_encoder(packed_input)
+        input_all_hidden, input_seq_lengths = pad_packed_sequence(
+            packed_input_all_hidden)
 
-        input_all_hidden, hidden = self.input_encoder(
-            input_batch,
+        packed_output, output_seq_lengths = self._embed_and_pack(
+            output_batch,
             device=device)
         output_all_hidden, hidden = self.output_encoder(
-            output_batch,
+            packed_output,
             hidden=hidden,
-            attended=input_all_hidden,
+            attended=(input_all_hidden, input_seq_lengths),
             device=device,
         )
+
         return self.program_decoder(
             hidden=hidden,
-            output_all_hidden=output_all_hidden,
+            output_all_hidden=(output_all_hidden, output_seq_lengths),
             num_examples=num_examples,
             max_program_length=max_program_length,
             device=device,
@@ -278,30 +289,6 @@ class LuongAttention(nn.Module):
         return context
 
 
-class LSTMAdapter(nn.Module):
-    """
-    LSTM module that conforms to the same interface as
-    the attention-variants.
-    """
-
-    def __init__(self, lstm):
-        super().__init__()
-        self.lstm = lstm
-
-    @staticmethod
-    def create(input_size, hidden_size):
-        return LSTMAdapter(nn.LSTM(input_size, hidden_size))
-
-    def forward(
-            self,
-            input_: torch.Tensor,
-            hidden: torch.Tensor,
-            attended_args: Tuple[torch.Tensor, torch.Tensor],
-            device: Optional[torch.device]):
-        _, hidden = self.lstm(input_.unsqueeze(0), hidden)
-        return hidden
-
-
 class SingleAttention(nn.Module):
     """Attention-LSTM module with single attention."""
 
@@ -363,34 +350,9 @@ class AttentionLSTM(nn.Module):
         self.rnn = rnn
 
     @staticmethod
-    def lstm(input_size: int, hidden_size: int) -> 'AttentionLSTM':
-        """Create an Attention-LSTM module with no attention."""
-        return AttentionLSTM(LSTMAdapter.create(input_size, hidden_size))
-
-    @staticmethod
     def single_attention(input_size: int, hidden_size: int) -> 'AttentionLSTM':
         """Create an Attention-LSTM with a single attention module."""
         return AttentionLSTM(SingleAttention(input_size, hidden_size))
-
-    @staticmethod
-    def _pack(
-            sequence_batch: List[torch.Tensor],
-            ) -> Tuple[PackedSequence, List[int]]:
-        """
-        Sort and pack a list of sequences to be used with an RNN.
-
-        :param sequence_batch: A list (batch_size) of
-            tensors (sequence_length, string_embedding_size).
-        """
-        # It used to be required to sort it first. Now it seems
-        # `pack_sequence()` has an option to do it for us.
-        sorted_indices = sorted(
-            range(len(sequence_batch)),
-            key=lambda i: sequence_batch[i].shape[0],
-            reverse=True,
-        )
-        packed = pack_sequence([sequence_batch[i] for i in sorted_indices])
-        return packed, sorted_indices
 
     @staticmethod
     def _sort(
@@ -422,16 +384,11 @@ class AttentionLSTM(nn.Module):
     def _unsort(
             all_hidden: torch.Tensor,
             final_hidden: Tuple[torch.Tensor, torch.Tensor],
-            sorted_indices: List[int],
+            unsorted_indices: List[int],
             ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
-        Helper function to unsort the hidden and attended tensors based on
-        the sorted indices.
+        Helper function to unsort the hidden and attended tensors.
         """
-        unsorted_indices = [None] * len(sorted_indices)
-        for i, original_idx in enumerate(sorted_indices):
-            unsorted_indices[original_idx] = i
-
         unsorted_all_hidden = all_hidden[:, unsorted_indices, :]
         unsorted_final_hidden = (
             final_hidden[0][:, unsorted_indices, :],
@@ -514,15 +471,14 @@ class AttentionLSTM(nn.Module):
 
     def forward(
             self,
-            sequence_batch: List[torch.Tensor],
+            packed_sequence: PackedSequence,
             hidden: Tuple[torch.Tensor, torch.Tensor] = None,
             attended: Tuple[torch.Tensor, torch.Tensor] = None,
             device: Optional[torch.device] = None):
         """
         Forward pass through the attention-lstm module.
 
-        :param sequence_batch: A list (batch_size) of
-            tensors (sequence_length, string_embedding_size).
+        :param packed_sequence: The packed sequence.
         :param hidden: A tuple of tensors (the hidden and
             cell states of an LSTM).
         :param attended: A tuple of tensors:
@@ -531,21 +487,13 @@ class AttentionLSTM(nn.Module):
             2. Sequence lengths (batch_size).
         :param device: The device to send data to.
         """
-        if not isinstance(sequence_batch, list):
-            raise ValueError(
-                'sequence_batch has to be a list. Instead got {}.'.format(
-                    type(sequence_batch).__name__,
-                )
-            )
-
-        packed, sorted_indices = AttentionLSTM._pack(sequence_batch)
         sorted_hidden, sorted_attended = AttentionLSTM._sort(
             hidden,
             attended,
-            sorted_indices,
+            packed_sequence.sorted_indices,
         )
         all_hidden, final_hidden = self._unroll(
-            packed,
+            packed_sequence,
             sorted_hidden,
             sorted_attended,
             device=device,
@@ -553,12 +501,9 @@ class AttentionLSTM(nn.Module):
         unsorted_all_hidden, unsorted_final_hidden = AttentionLSTM._unsort(
             all_hidden=all_hidden,
             final_hidden=final_hidden,
-            sorted_indices=sorted_indices,
+            unsorted_indices=packed_sequence.unsorted_indices,
         )
-        sequence_lengths = torch.tensor([
-            s.shape[0] for s in sequence_batch
-        ], device=device)
-        return (unsorted_all_hidden, sequence_lengths), unsorted_final_hidden
+        return unsorted_all_hidden, unsorted_final_hidden
 
 
 def expand_vector(
