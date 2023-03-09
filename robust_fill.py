@@ -86,7 +86,7 @@ class RobustFill(nn.Module):
         Convert each list of tokens in a batch into a tensor of
         shape (sequence_length, string_embedding_size).
         """
-        lengths = torch.as_tensor([len(v) for v in batch])
+        lengths = torch.as_tensor([len(v) for v in batch], device=device)
         # (batch_size, sequence_length).
         padded = pad_sequence([
             torch.as_tensor(v, device=device)
