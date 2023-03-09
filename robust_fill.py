@@ -97,7 +97,7 @@ class RobustFill(nn.Module):
         packed = pack_padded_sequence(embedded, lengths, enforce_sorted=False)
         # This has to be after pack_padding_sequence because it expects
         # length to be on the CPU.
-        lengths = lengths.to_device(device)
+        lengths = lengths.to(device)
         return packed, lengths
 
     def forward(
