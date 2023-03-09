@@ -301,7 +301,7 @@ def full_config() -> Config:
     )
 
 
-def profile_training() -> profile:
+def profile_training() -> None:
     """Use PyTorch profiler to profile training step."""
     config = full_config()
     config.model.to(config.device)
@@ -313,13 +313,15 @@ def profile_training() -> profile:
     with profile(
             activities=[ProfilerActivity.CUDA],
             schedule=sch,
+            on_trace_ready=torch.profiler.tensorboard_trace_handler(
+                './profile/log/'),
             with_stack=True,
             record_shapes=True,
             profile_memory=True) as prof:
         for _ in range(10):
             training_step(config)
             prof.step()
-    return prof
+    prof.export_chrome_trace('./profile/trace.json')
 
 
 def main() -> None:
@@ -330,7 +332,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description='Train RobustFill.')
     parser.add_argument(
         '-m', '--mode',
-        choices=['full', 'easy'],
+        choices=['full', 'easy', 'profile'],
+        required=True,
         help='Training mode to run in.',
     )
     args = parser.parse_args()
@@ -344,6 +347,8 @@ def main() -> None:
     elif args.mode == 'easy':
         config = easy_config()
         train(config)
+    else:
+        profile_training()
 
 
 if __name__ == '__main__':
