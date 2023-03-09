@@ -134,7 +134,7 @@ class ProgramDecoder(nn.Module):
         super().__init__()
         self.program_size = program_size
         self.hidden_size = hidden_size
-        self.program_lstm = AttentionLSTM.single_attention(
+        self.program_lstm = SingleAttention(
             input_size=program_size,
             hidden_size=hidden_size,
         )
@@ -159,16 +159,16 @@ class ProgramDecoder(nn.Module):
             to generate.
         """
         program_sequence = []
-        # List (batch_size) of tensors (1, program_size).
-        decoder_input = [
-            torch.zeros(1, self.program_size, device=device)
-            for _ in range(hidden[0].size()[1])
-        ]
+        # (batch_size, program_size).
+        decoder_input = torch.zeros(
+            hidden[0].size()[1],
+            self.program_size,
+            device=device)
         for _ in range(max_program_length):
-            _, hidden = self.program_lstm(
+            hidden = self.program_lstm(
                 decoder_input,
                 hidden=hidden,
-                attended=output_all_hidden,
+                attended_args=output_all_hidden,
                 device=device,
             )
             # (batch_size, hidden_size, num_examples).
@@ -186,11 +186,9 @@ class ProgramDecoder(nn.Module):
             program_embedding = self.softmax_linear(pooled)
 
             program_sequence.append(program_embedding.unsqueeze(0))
-            decoder_input = [
-                F.softmax(p, dim=1)
-                for p in program_embedding.split(1)
-                for _ in range(num_examples)
-            ]
+            decoder_input = (
+                F.softmax(program_embedding, dim=1)
+                .repeat_interleave(num_examples, dim=0))
 
         return torch.cat(program_sequence)
 

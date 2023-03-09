@@ -30,6 +30,7 @@ class TestNN(TestCase):
             packed,
             hidden=None,
             attended=None,
+            device=None,
         )
         all_hidden2, final_hidden2 = lstm(packed, None)
 
@@ -66,7 +67,7 @@ class TestNN(TestCase):
         sequence_lengths = torch.LongTensor([1, 3, 2])
 
         attention = LuongAttention(lambda t: t)
-        context = attention(query, attended, sequence_lengths)
+        context = attention(query, attended, sequence_lengths, device=None)
 
         expected = torch.Tensor([
             [1, 2, 3],
@@ -84,7 +85,13 @@ class TestNN(TestCase):
         ])
         sequence_lengths = torch.LongTensor([3, 1, 2])
 
-        pad(tensor, sequence_lengths, 1337, batch_dim=0, sequence_dim=1)
+        pad(
+            tensor=tensor,
+            sequence_lengths=sequence_lengths,
+            value=1337,
+            batch_dim=0,
+            sequence_dim=1,
+            device=None)
 
         expected = torch.Tensor([
             [1, 2, 3],
@@ -104,7 +111,13 @@ class TestNN(TestCase):
         ])
         sequence_lengths = torch.LongTensor([1, 2, 1])
 
-        pad(tensor, sequence_lengths, -1337, batch_dim=1, sequence_dim=0)
+        pad(
+            tensor=tensor,
+            sequence_lengths=sequence_lengths,
+            value=-1337,
+            batch_dim=1,
+            sequence_dim=0,
+            device=None)
 
         expected = torch.Tensor([
             [[1, 2],
@@ -115,3 +128,25 @@ class TestNN(TestCase):
              [-1337, -1337]],
         ])
         self.assertTrue(torch.equal(expected, tensor))
+
+    def test_repeat_interleave(self):
+        """
+        Test behavior of .repeat_interleave().
+        This is documentation -- we aren't unit testing pytorch behavior,
+        just our understanding of it.
+        """
+        tensor = torch.Tensor([
+            [1, 2, 3],
+            [4, 5, 6],
+        ])
+        expected = torch.Tensor([
+            [1, 2, 3],
+            [1, 2, 3],
+            [1, 2, 3],
+            [4, 5, 6],
+            [4, 5, 6],
+            [4, 5, 6],
+        ])
+        self.assertTrue(torch.equal(
+            tensor.repeat_interleave(3, dim=0),
+            expected))
