@@ -86,7 +86,7 @@ class RobustFill(nn.Module):
         Convert each list of tokens in a batch into a tensor of
         shape (sequence_length, string_embedding_size).
         """
-        lengths = torch.as_tensor([len(v) for v in batch], device=device)
+        lengths = torch.as_tensor([len(v) for v in batch], dtype=torch.int64)
         # (batch_size, sequence_length).
         padded = pad_sequence([
             torch.as_tensor(v, device=device)
@@ -118,6 +118,7 @@ class RobustFill(nn.Module):
         packed_input_all_hidden, hidden = self.input_encoder(packed_input)
         input_all_hidden, input_seq_lengths = pad_packed_sequence(
             packed_input_all_hidden)
+        input_seq_lengths.to(device)
 
         packed_output, output_seq_lengths = self._embed_and_pack(
             output_batch,
@@ -128,6 +129,7 @@ class RobustFill(nn.Module):
             attended=(input_all_hidden, input_seq_lengths),
             device=device,
         )
+        output_seq_lengths.to(device)
 
         return self.program_decoder(
             hidden=hidden,
