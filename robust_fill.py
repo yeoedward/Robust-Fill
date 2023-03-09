@@ -95,6 +95,9 @@ class RobustFill(nn.Module):
         # (batch_size, sequence_length, string_embedding_size).
         embedded = self.embedding(padded)
         packed = pack_padded_sequence(embedded, lengths, enforce_sorted=False)
+        # This has to be after pack_padding_sequence because it expects
+        # length to be on the CPU.
+        lengths = lengths.to_device(device)
         return packed, lengths
 
     def forward(
@@ -114,11 +117,11 @@ class RobustFill(nn.Module):
         num_examples = RobustFill._check_num_examples(batch)
         input_batch, output_batch = RobustFill._split_flatten_examples(batch)
 
-        packed_input, _ = self._embed_and_pack(input_batch, device=device)
+        packed_input, input_seq_lengths = self._embed_and_pack(
+            input_batch,
+            device=device)
         packed_input_all_hidden, hidden = self.input_encoder(packed_input)
-        input_all_hidden, input_seq_lengths = pad_packed_sequence(
-            packed_input_all_hidden)
-        input_seq_lengths.to(device)
+        input_all_hidden, _ = pad_packed_sequence(packed_input_all_hidden)
 
         packed_output, output_seq_lengths = self._embed_and_pack(
             output_batch,
@@ -129,7 +132,6 @@ class RobustFill(nn.Module):
             attended=(input_all_hidden, input_seq_lengths),
             device=device,
         )
-        output_seq_lengths.to(device)
 
         return self.program_decoder(
             hidden=hidden,
