@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.profiler import profile, ProfilerActivity, schedule
+from torch.distributed import init_process_group
 
 from robust_fill import RobustFill
 from sample import sample_example
@@ -45,105 +46,120 @@ StepInfo = namedtuple(
 )
 
 
-def max_program_length(expected_programs: List[List[int]]) -> int:
-    """Return length of longest program."""
-    return max([len(program) for program in expected_programs])
+def ddp_setup(rank: int, world_size: int) -> None:
+    """Set up for distributed data parallel training."""
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12345'
+    init_process_group(backend='nccl', rank=rank, world_size=world_size)
 
 
-def training_step(config: Config) -> StepInfo:
-    """Execute a single training step."""
-    expected_programs, examples = config.sample()
-    max_length = max_program_length(expected_programs)
-    actual_programs = config.model(examples, max_length, device=config.device)
+class Trainer:
+    def __init__(self, config: Config):
+        self.config = config
 
-    # Compute cross-entropy loss ignoring padding tokens due to
-    # different program lengths.
-    program_size = actual_programs.size()[2]
-    padding_index = -1
-    # Reshape actual_programs (seq length, batch size, program size)
-    # to (batch size * seq length, program size).
-    reshaped_actual_programs = (
-        actual_programs.transpose(1, 0)
-        # Necessary because .view() expects contiguity but
-        # .transpose() doesn't copy.
-        .contiguous()
-        .view(-1, program_size)
-    )
-    # Convert expected programs from list of lists of ints (uneven lengths)
-    # to a tensor of (batch size * max length) with padding tokens.
-    padded_expected_programs = torch.tensor([
-            program[i] if i < len(program) else padding_index
-            for program in expected_programs
-            for i in range(max_length)
-    ], device=config.device)
-    loss = F.cross_entropy(
-        reshaped_actual_programs,
-        padded_expected_programs,
-        ignore_index=padding_index,
-    )
+    @staticmethod
+    def _max_program_length(expected_programs: List[List[int]]) -> int:
+        """Return length of longest program."""
+        return max([len(program) for program in expected_programs])
 
-    config.optimizer.zero_grad()
-    loss.backward()
-    nn.utils.clip_grad_value_(
-        config.model.parameters(),
-        clip_value=config.clip_grad_value)
-    config.optimizer.step()
+    def run_batch(self) -> StepInfo:
+        """Execute a single training step."""
+        expected_programs, examples = self.config.sample()
+        max_length = Trainer._max_program_length(expected_programs)
+        actual_programs = self.config.model(
+            examples,
+            max_length,
+            device=self.config.device)
 
-    return StepInfo(
-        loss=loss,
-        examples=examples,
-        expected_programs=expected_programs,
-        actual_programs=actual_programs)
+        # Compute cross-entropy loss ignoring padding tokens due to
+        # different program lengths.
+        program_size = actual_programs.size()[2]
+        padding_index = -1
+        # Reshape actual_programs (seq length, batch size, program size)
+        # to (batch size * seq length, program size).
+        reshaped_actual_programs = (
+            actual_programs.transpose(1, 0)
+            # Necessary because .view() expects contiguity but
+            # .transpose() doesn't copy.
+            .contiguous()
+            .view(-1, program_size)
+        )
+        # Convert expected programs from list of lists of ints (uneven lengths)
+        # to a tensor of (batch size * max length) with padding tokens.
+        padded_expected_programs = torch.tensor([
+                program[i] if i < len(program) else padding_index
+                for program in expected_programs
+                for i in range(max_length)
+        ], device=self.config.device)
+        loss = F.cross_entropy(
+            reshaped_actual_programs,
+            padded_expected_programs,
+            ignore_index=padding_index,
+        )
 
+        self.config.optimizer.zero_grad()
+        loss.backward()
+        nn.utils.clip_grad_value_(
+            self.config.model.parameters(),
+            clip_value=self.config.clip_grad_value)
+        self.config.optimizer.step()
 
-def train(config: Config) -> None:
-    """Infinite loop for training."""
-    if (config.checkpoint_filename is not None
-       and os.path.exists(config.checkpoint_filename)):
-        print('Starting model from existing checkpoint file: '
-              f'{config.checkpoint_filename}')
-        config.model.load_state_dict(torch.load(config.checkpoint_filename))
+        return StepInfo(
+            loss=loss,
+            examples=examples,
+            expected_programs=expected_programs,
+            actual_programs=actual_programs)
 
-    config.model.to(config.device)
+    def train(self) -> None:
+        """Infinite loop for training."""
+        if (self.config.checkpoint_filename is not None
+           and os.path.exists(self.config.checkpoint_filename)):
+            print('Starting model from existing checkpoint file: '
+                  f'{self.config.checkpoint_filename}')
+            self.config.model.load_state_dict(
+                torch.load(self.config.checkpoint_filename))
 
-    example_idx = 0
-    while True:
-        for i in range(OOM_RETRIES + 1):
-            try:
-                step_info = training_step(config)
-                break
-            except torch.cuda.OutOfMemoryError:
-                if i == OOM_RETRIES:
-                    raise
-                print('Out of memory, retrying')
+        self.config.model.to(self.config.device)
 
-        if example_idx % config.checkpoint_step_size == 0:
-            print('Checkpointing at example {}'.format(example_idx))
-            print('Loss: {}'.format(step_info.loss))
-            if config.checkpoint_print_tensors:
-                print_batch_limit = 3
+        example_idx = 0
+        while True:
+            for i in range(OOM_RETRIES + 1):
+                try:
+                    step_info = self.run_batch()
+                    break
+                except torch.cuda.OutOfMemoryError:
+                    if i == OOM_RETRIES:
+                        raise
+                    print('Out of memory, retrying')
 
-                print('Examples:')
-                pp.pprint(step_info.examples[:print_batch_limit])
+            if example_idx % self.config.checkpoint_step_size == 0:
+                print('Checkpointing at example {}'.format(example_idx))
+                print('Loss: {}'.format(step_info.loss))
+                if self.config.checkpoint_print_tensors:
+                    print_batch_limit = 3
 
-                print('Expected programs:')
-                print(step_info.expected_programs[:print_batch_limit])
+                    print('Examples:')
+                    pp.pprint(step_info.examples[:print_batch_limit])
 
-                print('Actual programs:')
-                print(
-                    F.softmax(step_info.actual_programs, dim=2)
-                    .transpose(1, 0)[:print_batch_limit, :, :]
-                )
+                    print('Expected programs:')
+                    print(step_info.expected_programs[:print_batch_limit])
 
-            if config.checkpoint_filename is not None:
-                print('Saving to file {}'.format(config.checkpoint_filename))
-                torch.save(
-                    config.model.state_dict(),
-                    config.checkpoint_filename)
+                    print('Actual programs:')
+                    print(
+                        F.softmax(step_info.actual_programs, dim=2)
+                        .transpose(1, 0)[:print_batch_limit, :, :]
+                    )
 
-            print('Done')
+                if self.config.checkpoint_filename is not None:
+                    print('Saving to file {}'.format(
+                        self.config.checkpoint_filename))
+                    torch.save(
+                        self.config.model.state_dict(),
+                        self.config.checkpoint_filename)
 
-        example_idx += 1
+                print('Done')
+
+            example_idx += 1
 
 
 def generate_program(batch_size: int) -> List[List[int]]:
@@ -305,6 +321,7 @@ def profile_training() -> None:
     """Use PyTorch profiler to profile training step."""
     config = full_config()
     config.model.to(config.device)
+    trainer = Trainer(config)
     sch = schedule(
         wait=1,
         warmup=1,
@@ -319,7 +336,7 @@ def profile_training() -> None:
             record_shapes=True,
             profile_memory=True) as prof:
         for _ in range(10):
-            training_step(config)
+            trainer.run_batch()
             prof.step()
 
 
@@ -342,10 +359,12 @@ def main() -> None:
 
     if args.mode == 'full':
         config = full_config()
-        train(config)
+        trainer = Trainer(config)
+        trainer.train()
     elif args.mode == 'easy':
         config = easy_config()
-        train(config)
+        trainer = Trainer(config)
+        trainer.train()
     else:
         profile_training()
 
