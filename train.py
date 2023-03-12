@@ -3,12 +3,14 @@ from collections import namedtuple
 import os
 import pprint as pp
 import random
-from typing import Callable, List, NamedTuple, Optional, Tuple
+from typing import Callable, List, NamedTuple, Optional, Tuple, Union
 
 import torch
+import torch.multiprocessing as mp
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.profiler import profile, ProfilerActivity, schedule
 from torch.distributed import init_process_group
 
@@ -28,7 +30,7 @@ class Config(NamedTuple):
     sample: Callable[[], Tuple[List, List]]
     optimizer: optim.Optimizer
     clip_grad_value: float
-    device: Optional[torch.device]
+    device: Union[Optional[torch.device], int]
     checkpoint_filename: str
     checkpoint_step_size: int
     checkpoint_print_tensors: bool
@@ -44,13 +46,6 @@ StepInfo = namedtuple(
         'actual_programs',
     ],
 )
-
-
-def ddp_setup(rank: int, world_size: int) -> None:
-    """Set up for distributed data parallel training."""
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12345'
-    init_process_group(backend='nccl', rank=rank, world_size=world_size)
 
 
 class Trainer:
@@ -158,7 +153,11 @@ class Trainer:
                         raise
                     print('Out of memory, retrying')
 
-            if example_idx % self.config.checkpoint_step_size == 0:
+            # When training with DDP, only one process should checkpoint.
+            checkpointable = (not isinstance(self.config.device, int) or
+                              self.config.device == 0)
+            if (checkpointable
+               and example_idx % self.config.checkpoint_step_size == 0):
                 self._save_checkpoint(step_info, example_idx)
 
             example_idx += 1
@@ -342,6 +341,31 @@ def profile_training() -> None:
             prof.step()
 
 
+def ddp_setup(rank: int, world_size: int) -> None:
+    """Set up for distributed data parallel training."""
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12345'
+    init_process_group(
+        backend='nccl',
+        rank=rank,
+        world_size=world_size)
+
+
+def ddp_run(rank: int, world_size: int) -> None:
+    """
+    Run distributed data parallel training.
+
+    :param rank: Rank of the process i.e. gpu_id.
+    :param world_size: Number of processes i.e. number of GPUs.
+    """
+    ddp_setup(rank, world_size)
+    config = full_config()
+    config.model = DDP(config.model, device_ids=[rank])
+    config.device = rank
+    trainer = Trainer(config)
+    trainer.train()
+
+
 def main() -> None:
     """
     Main function responsible for parsing command line arguments and
@@ -360,6 +384,14 @@ def main() -> None:
     random.seed(420)
 
     if args.mode == 'full':
+        world_count = torch.cuda.device_count()
+        if world_count > 1:
+            # Use PyTorch's Distributed Data Parallel (DDP) to train.
+            mp.spawn(
+                ddp_run,
+                args=world_count,
+                nprocs=torch.cuda.device_count())
+            return
         config = full_config()
         trainer = Trainer(config)
         trainer.train()
