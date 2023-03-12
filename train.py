@@ -56,6 +56,13 @@ def ddp_setup(rank: int, world_size: int) -> None:
 class Trainer:
     def __init__(self, config: Config):
         self.config = config
+        self.config.model.to(self.config.device)
+        if (self.config.checkpoint_filename is not None
+           and os.path.exists(self.config.checkpoint_filename)):
+            print('Starting model from existing checkpoint file: '
+                  f'{self.config.checkpoint_filename}')
+            self.config.model.load_state_dict(
+                torch.load(self.config.checkpoint_filename))
 
     @staticmethod
     def _max_program_length(expected_programs: List[List[int]]) -> int:
@@ -63,7 +70,7 @@ class Trainer:
         return max([len(program) for program in expected_programs])
 
     def run_batch(self) -> StepInfo:
-        """Execute a single training step."""
+        """Execute a single forward-backward pass on a minibatch."""
         expected_programs, examples = self.config.sample()
         max_length = Trainer._max_program_length(expected_programs)
         actual_programs = self.config.model(
@@ -110,17 +117,36 @@ class Trainer:
             expected_programs=expected_programs,
             actual_programs=actual_programs)
 
+    def _save_checkpoint(self, step_info: StepInfo, example_idx: int) -> None:
+        """Save training state."""
+        print('Checkpointing at example {}'.format(example_idx))
+        print('Loss: {}'.format(step_info.loss))
+        if self.config.checkpoint_print_tensors:
+            print_batch_limit = 3
+
+            print('Examples:')
+            pp.pprint(step_info.examples[:print_batch_limit])
+
+            print('Expected programs:')
+            print(step_info.expected_programs[:print_batch_limit])
+
+            print('Actual programs:')
+            print(
+                F.softmax(step_info.actual_programs, dim=2)
+                .transpose(1, 0)[:print_batch_limit, :, :]
+            )
+
+        if self.config.checkpoint_filename is not None:
+            print('Saving to file {}'.format(
+                self.config.checkpoint_filename))
+            torch.save(
+                self.config.model.state_dict(),
+                self.config.checkpoint_filename)
+
+        print('Done')
+
     def train(self) -> None:
         """Infinite loop for training."""
-        if (self.config.checkpoint_filename is not None
-           and os.path.exists(self.config.checkpoint_filename)):
-            print('Starting model from existing checkpoint file: '
-                  f'{self.config.checkpoint_filename}')
-            self.config.model.load_state_dict(
-                torch.load(self.config.checkpoint_filename))
-
-        self.config.model.to(self.config.device)
-
         example_idx = 0
         while True:
             for i in range(OOM_RETRIES + 1):
@@ -133,31 +159,7 @@ class Trainer:
                     print('Out of memory, retrying')
 
             if example_idx % self.config.checkpoint_step_size == 0:
-                print('Checkpointing at example {}'.format(example_idx))
-                print('Loss: {}'.format(step_info.loss))
-                if self.config.checkpoint_print_tensors:
-                    print_batch_limit = 3
-
-                    print('Examples:')
-                    pp.pprint(step_info.examples[:print_batch_limit])
-
-                    print('Expected programs:')
-                    print(step_info.expected_programs[:print_batch_limit])
-
-                    print('Actual programs:')
-                    print(
-                        F.softmax(step_info.actual_programs, dim=2)
-                        .transpose(1, 0)[:print_batch_limit, :, :]
-                    )
-
-                if self.config.checkpoint_filename is not None:
-                    print('Saving to file {}'.format(
-                        self.config.checkpoint_filename))
-                    torch.save(
-                        self.config.model.state_dict(),
-                        self.config.checkpoint_filename)
-
-                print('Done')
+                self._save_checkpoint(step_info, example_idx)
 
             example_idx += 1
 

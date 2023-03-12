@@ -104,7 +104,7 @@ class RobustFill(nn.Module):
             self,
             batch: List,
             max_program_length: int,
-            device: Optional[torch.device] = None):
+            device: Optional[torch.device] = None) -> torch.Tensor:
         """
         Forward pass through RobustFill.
 
