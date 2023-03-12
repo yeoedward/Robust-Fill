@@ -4,7 +4,27 @@ from torch.nn.utils.rnn import pack_sequence, pad_packed_sequence
 import torch
 import torch.nn as nn
 
-from robust_fill import AttentionLSTM, LSTMAdapter, LuongAttention, pad
+from robust_fill import AttentionLSTM, LuongAttention, pad
+
+
+class LSTMAdapter(nn.Module):
+    """Used to test unrolling of AttentionLSTM."""
+    def __init__(self, lstm):
+        super().__init__()
+        self.lstm = lstm
+
+    @staticmethod
+    def create(input_size, hidden_size):
+        return LSTMAdapter(nn.LSTM(input_size, hidden_size))
+
+    # attended_args is here to conform to the same interfaces
+    # as the attention-variants
+    def forward(self, input_, hidden, attended_args, device):
+        if attended_args is not None:
+            raise ValueError('LSTM doesnt use the arg "attended"')
+
+        _, hidden = self.lstm(input_.unsqueeze(0), hidden)
+        return hidden
 
 
 class TestNN(TestCase):
