@@ -288,7 +288,7 @@ def full_config() -> Config:
         hidden_size=512,
         program_size=len(token_tables.op_token_table),
     )
-    optimizer = optim.SGD(robust_fill.parameters(), lr=0.001)
+    optimizer = optim.SGD(robust_fill.parameters(), lr=0.01)
 
     def sample():
         return sample_full(
@@ -314,7 +314,7 @@ def full_config() -> Config:
         sample=sample,
         device=device,
         checkpoint_filename=checkpoint_filename,
-        checkpoint_step_size=1,
+        checkpoint_step_size=100,
         checkpoint_print_tensors=False,
     )
 
