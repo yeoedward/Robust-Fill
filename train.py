@@ -383,9 +383,6 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    torch.manual_seed(1337)
-    random.seed(420)
-
     if args.mode == 'full':
         world_count = torch.cuda.device_count()
         if world_count > 1:
