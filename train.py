@@ -51,7 +51,6 @@ StepInfo = namedtuple(
 class Trainer:
     def __init__(self, config: Config):
         self.config = config
-        self.config.model.to(self.config.device)
         if (self.config.checkpoint_filename is not None
            and os.path.exists(self.config.checkpoint_filename)):
             print('Starting model from existing checkpoint file: '
@@ -299,10 +298,13 @@ def full_config(rank: Optional[int] = None) -> Config:
 
     device = None
     if rank is not None:
-        model = DDP(model, device_ids=[rank])
         device = rank
+        # This has to be before DDP().
+        model.to(device)
+        model = DDP(model, device_ids=[rank])
     elif torch.cuda.is_available():
         device = torch.device('cuda')
+        model.to(device)
         print('Using device `cuda`')
     # Device `mps` doesn't currently work because of Pytorch bugs.
     # elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
@@ -391,7 +393,7 @@ def main() -> None:
             mp.spawn(
                 ddp_run,
                 args=(world_count,),
-                nprocs=torch.cuda.device_count())
+                nprocs=world_count)
             return
         config = full_config()
         trainer = Trainer(config)
