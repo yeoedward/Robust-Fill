@@ -30,7 +30,7 @@ class Config(NamedTuple):
     sample: Callable[[], Tuple[List, List]]
     optimizer: optim.Optimizer
     clip_grad_value: float
-    device: Union[Optional[torch.device], int]
+    device: Optional[Union[torch.device, int]]
     checkpoint_filename: str
     checkpoint_step_size: int
     checkpoint_print_tensors: bool
@@ -274,20 +274,20 @@ def sample_full(
     return program_batch, strings_batch
 
 
-def full_config() -> Config:
+def full_config(rank: Optional[int] = None) -> Config:
     """
     Return config for full model on programs and example input-output data.
     """
     token_tables = build_token_tables()
 
     checkpoint_filename = './checkpoint.pth'
-    robust_fill = RobustFill(
+    model = RobustFill(
         string_size=len(op.CHARACTER),
         string_embedding_size=128,
         hidden_size=512,
         program_size=len(token_tables.op_token_table),
     )
-    optimizer = optim.SGD(robust_fill.parameters(), lr=0.01)
+    optimizer = optim.SGD(model.parameters(), lr=0.01)
 
     def sample():
         return sample_full(
@@ -298,7 +298,10 @@ def full_config() -> Config:
         )
 
     device = None
-    if torch.cuda.is_available():
+    if rank is not None:
+        model = DDP(model, device_ids=[rank])
+        device = rank
+    elif torch.cuda.is_available():
         device = torch.device('cuda')
         print('Using device `cuda`')
     # Device `mps` doesn't currently work because of Pytorch bugs.
@@ -307,7 +310,7 @@ def full_config() -> Config:
     #    print('Using device `mps`')
 
     return Config(
-        model=robust_fill,
+        model=model,
         optimizer=optimizer,
         clip_grad_value=1.0,
         sample=sample,
@@ -359,9 +362,7 @@ def ddp_run(rank: int, world_size: int) -> None:
     :param world_size: Number of processes i.e. number of GPUs.
     """
     ddp_setup(rank, world_size)
-    config = full_config()
-    config.model = DDP(config.model, device_ids=[rank])
-    config.device = rank
+    config = full_config(rank=rank)
     trainer = Trainer(config)
     trainer.train()
 
@@ -389,7 +390,7 @@ def main() -> None:
             # Use PyTorch's Distributed Data Parallel (DDP) to train.
             mp.spawn(
                 ddp_run,
-                args=world_count,
+                args=(world_count,),
                 nprocs=torch.cuda.device_count())
             return
         config = full_config()
