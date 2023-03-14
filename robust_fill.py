@@ -92,7 +92,7 @@ class RobustFill(nn.Module):
             torch.as_tensor(v)
             for v in batch
         ])
-        padded.to(device)
+        padded = padded.to(device)
         # (batch_size, sequence_length, string_embedding_size).
         embedded = self.embedding(padded)
         packed = pack_padded_sequence(embedded, lengths, enforce_sorted=False)
