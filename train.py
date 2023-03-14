@@ -389,6 +389,7 @@ def main() -> None:
     if args.mode == 'full':
         world_count = torch.cuda.device_count()
         if world_count > 1:
+            print('Running in `DDP` mode.')
             # Use PyTorch's Distributed Data Parallel (DDP) to train.
             mp.spawn(
                 ddp_run,
