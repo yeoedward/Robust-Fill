@@ -1,4 +1,4 @@
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple, Union
 from torch.nn.utils.rnn import (
     PackedSequence,
     pad_sequence,
@@ -80,7 +80,7 @@ class RobustFill(nn.Module):
     def _embed_and_pack(
             self,
             batch: List,
-            device: Optional[torch.device],
+            device: Optional[Union[torch.device, int]],
             ) -> Tuple[PackedSequence, torch.Tensor]:
         """
         Convert each list of tokens in a batch into a tensor of
@@ -89,9 +89,10 @@ class RobustFill(nn.Module):
         lengths = torch.as_tensor([len(v) for v in batch], dtype=torch.int64)
         # (batch_size, sequence_length).
         padded = pad_sequence([
-            torch.as_tensor(v, device=device)
+            torch.as_tensor(v)
             for v in batch
         ])
+        padded.to(device)
         # (batch_size, sequence_length, string_embedding_size).
         embedded = self.embedding(padded)
         packed = pack_padded_sequence(embedded, lengths, enforce_sorted=False)
@@ -104,7 +105,7 @@ class RobustFill(nn.Module):
             self,
             batch: List,
             max_program_length: int,
-            device: Optional[torch.device] = None) -> torch.Tensor:
+            device: Optional[Union[torch.device, int]] = None) -> torch.Tensor:
         """
         Forward pass through RobustFill.
 
@@ -162,7 +163,7 @@ class ProgramDecoder(nn.Module):
             output_all_hidden: Tuple[torch.Tensor, torch.Tensor],
             num_examples: int,
             max_program_length: int,
-            device: Optional[torch.device]) -> torch.Tensor:
+            device: Optional[Union[torch.device, int]]) -> torch.Tensor:
         """
         Forward pass through the decoder.
 
@@ -226,7 +227,7 @@ class LuongAttention(nn.Module):
     def _masked_softmax(
             vectors: torch.Tensor,
             sequence_lengths: torch.LongTensor,
-            device: Optional[torch.device]) -> torch.Tensor:
+            device: Optional[Union[torch.device, int]]) -> torch.Tensor:
         """
         Returns the softmax of the given vectors, but masking out values
         above the sequence length.
@@ -250,7 +251,7 @@ class LuongAttention(nn.Module):
             query: torch.Tensor,
             attended: torch.Tensor,
             sequence_lengths: torch.LongTensor,
-            device: Optional[torch.device]) -> torch.Tensor:
+            device: Optional[Union[torch.device, int]]) -> torch.Tensor:
         """
         Compute context vector using weighted average of attended vectors.
 
@@ -306,7 +307,7 @@ class SingleAttention(nn.Module):
             input_: torch.Tensor,
             hidden: torch.Tensor,
             attended_args: Tuple[torch.Tensor, torch.Tensor],
-            device: Optional[torch.device]) -> torch.Tensor:
+            device: Optional[Union[torch.device, int]]) -> torch.Tensor:
         """
         Forward pass for the single attention-lstm module.
 
@@ -406,7 +407,7 @@ class AttentionLSTM(nn.Module):
             packed: PackedSequence,
             hidden: Tuple[torch.Tensor, torch.Tensor],
             attended: Tuple[torch.Tensor, torch.Tensor],
-            device: Optional[torch.device],
+            device: Optional[Union[torch.device, int]],
             ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Sequentially invoke the RNN on the packed sequence with
@@ -478,7 +479,7 @@ class AttentionLSTM(nn.Module):
             packed_sequence: PackedSequence,
             hidden: Tuple[torch.Tensor, torch.Tensor] = None,
             attended: Tuple[torch.Tensor, torch.Tensor] = None,
-            device: Optional[torch.device] = None):
+            device: Optional[Union[torch.device, int]] = None):
         """
         Forward pass through the attention-lstm module.
 
@@ -540,7 +541,7 @@ def pad(
         value: Any,
         batch_dim: int,
         sequence_dim: int,
-        device: Optional[torch.device]) -> None:
+        device: Optional[Union[torch.device, int]]) -> None:
     """
     Pad the tensor with the given value at indices where it exceeds
     the sequence length for that batch.

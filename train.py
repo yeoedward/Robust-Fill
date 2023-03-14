@@ -293,7 +293,7 @@ def full_config(rank: Optional[int] = None) -> Config:
             token_tables,
             batch_size=32,
             max_expressions=10,
-            max_characters=50,
+            max_characters=30,
         )
 
     device = None
