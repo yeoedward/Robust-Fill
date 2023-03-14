@@ -157,6 +157,42 @@ class ProgramDecoder(nn.Module):
         self.max_pool_linear = nn.Linear(hidden_size, hidden_size)
         self.softmax_linear = nn.Linear(hidden_size, program_size)
 
+    def decode(
+            self,
+            input_: torch.Tensor,
+            hidden: Tuple[torch.Tensor, torch.Tensor],
+            output_all_hidden: Tuple[torch.Tensor, torch.Tensor],
+            num_examples: int,
+            device: Optional[Union[torch.device, int]]) -> torch.Tensor:
+        """
+        Single step of a forward pass through the decoder.
+
+        :param input_: Input to the decoder.
+        :param hidden: Hidden states of LSTM from output encoder.
+        :param output_all_hidden: Entire sequence of hidden states of
+            LSTM from output encoder (to be attended to).
+        :param num_examples: The number of examples in the batch.
+        """
+        hidden = self.program_lstm(
+            input_,
+            hidden=hidden,
+            attended_args=output_all_hidden,
+            device=device,
+        )
+        # (batch_size, hidden_size, num_examples).
+        unpooled = (
+            torch.tanh(self.max_pool_linear(hidden[0][-1, :, :]))
+            .view(-1, num_examples, self.hidden_size)
+            .permute(0, 2, 1)
+            # Necessary for 'mps' device otherwise maxpool
+            # throws an error.
+            .contiguous()
+        )
+        # (batch_size, hidden_size)
+        pooled = F.max_pool1d(unpooled, num_examples).squeeze(2)
+        # (batch_size, program_size)
+        return self.softmax_linear(pooled)
+
     def forward(
             self,
             hidden: Tuple[torch.Tensor, torch.Tensor],
@@ -180,27 +216,15 @@ class ProgramDecoder(nn.Module):
             hidden[0].size()[1],
             self.program_size,
             device=device)
+
         for _ in range(max_program_length):
-            hidden = self.program_lstm(
-                decoder_input,
+            program_embedding = self.decode(
+                input_=decoder_input,
                 hidden=hidden,
-                attended_args=output_all_hidden,
+                output_all_hidden=output_all_hidden,
+                num_examples=num_examples,
                 device=device,
             )
-            # (batch_size, hidden_size, num_examples).
-            unpooled = (
-                torch.tanh(self.max_pool_linear(hidden[0][-1, :, :]))
-                .view(-1, num_examples, self.hidden_size)
-                .permute(0, 2, 1)
-                # Necessary for 'mps' device otherwise maxpool
-                # throws an error.
-                .contiguous()
-            )
-            # (batch_size, hidden_size)
-            pooled = F.max_pool1d(unpooled, num_examples).squeeze(2)
-            # (batch_size, program_size)
-            program_embedding = self.softmax_linear(pooled)
-
             program_sequence.append(program_embedding.unsqueeze(0))
             decoder_input = (
                 F.softmax(program_embedding, dim=1)
