@@ -291,9 +291,9 @@ def full_config(rank: Optional[int] = None) -> Config:
     def sample():
         return sample_full(
             token_tables,
-            batch_size=32,
+            batch_size=64,
             max_expressions=10,
-            max_characters=30,
+            max_characters=16,
         )
 
     device = None
