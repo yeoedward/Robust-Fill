@@ -16,7 +16,7 @@ from torch.distributed import init_process_group
 
 from robust_fill import RobustFill
 from sample import sample_example
-from tokens import TokenTables, build_token_tables, tokenize_string
+from tokens import Tokenizer
 import operators as op
 
 
@@ -250,7 +250,7 @@ def easy_config() -> Config:
 
 
 def sample_full(
-        token_tables: TokenTables,
+        tokenizer: Tokenizer,
         batch_size: int,
         max_expressions: int,
         max_characters: int) -> Tuple[List, List]:
@@ -262,10 +262,10 @@ def sample_full(
             max_expressions=max_expressions,
             max_characters=max_characters,
         )
-        program = example.program.to_tokens(token_tables.op_token_table)
+        program = example.program.to_tokens(tokenizer.op_token_table)
         strings = [
-            (tokenize_string(input_, token_tables.string_token_table),
-             tokenize_string(output, token_tables.string_token_table))
+            (tokenizer.tokenize_string(input_),
+             tokenizer.tokenize_string(output))
             for input_, output in example.strings
         ]
         program_batch.append(program)
@@ -277,20 +277,20 @@ def full_config(rank: Optional[int] = None) -> Config:
     """
     Return config for full model on programs and example input-output data.
     """
-    token_tables = build_token_tables()
+    tokenizer = Tokenizer.create()
 
     checkpoint_filename = './checkpoint.pth'
     model = RobustFill(
         string_size=len(op.CHARACTER),
         string_embedding_size=128,
         hidden_size=512,
-        program_size=len(token_tables.op_token_table),
+        program_size=len(tokenizer.op_token_table),
     )
     optimizer = optim.SGD(model.parameters(), lr=0.01)
 
     def sample():
         return sample_full(
-            token_tables,
+            tokenizer,
             batch_size=64,
             max_expressions=10,
             max_characters=16,
