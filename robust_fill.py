@@ -101,6 +101,43 @@ class RobustFill(nn.Module):
         lengths = lengths.to(device)
         return packed, lengths
 
+    def encode(
+            self,
+            batch: List,
+            device: Optional[Union[torch.device, int]],
+            ) -> Tuple[
+                Tuple[torch.Tensor, torch.Tensor],
+                Tuple[torch.Tensor, torch.Tensor]]:
+        """
+        Encode input-output pairs.
+
+        :param batch: List (batch_size) of tuples (input, output) of
+            list (sequence_length) of token indices.
+        :param device: The device to send the input data to.
+        :returns: Tuple of (final hidden state, all hidden states) of encoding.
+        """
+        input_batch, output_batch = RobustFill._split_flatten_examples(batch)
+
+        # Encode inputs.
+        packed_input, input_seq_lengths = self._embed_and_pack(
+            input_batch,
+            device=device)
+        packed_input_all_hidden, hidden = self.input_encoder(packed_input)
+        input_all_hidden, _ = pad_packed_sequence(packed_input_all_hidden)
+
+        # Encode outputs.
+        packed_output, output_seq_lengths = self._embed_and_pack(
+            output_batch,
+            device=device)
+        output_all_hidden, hidden = self.output_encoder(
+            packed_output,
+            hidden=hidden,
+            attended=(input_all_hidden, input_seq_lengths),
+            device=device,
+        )
+
+        return hidden, (output_all_hidden, output_seq_lengths)
+
     def forward(
             self,
             batch: List,
@@ -116,27 +153,13 @@ class RobustFill(nn.Module):
         :param device: The device to send the input data to.
         """
         num_examples = RobustFill._check_num_examples(batch)
-        input_batch, output_batch = RobustFill._split_flatten_examples(batch)
-
-        packed_input, input_seq_lengths = self._embed_and_pack(
-            input_batch,
-            device=device)
-        packed_input_all_hidden, hidden = self.input_encoder(packed_input)
-        input_all_hidden, _ = pad_packed_sequence(packed_input_all_hidden)
-
-        packed_output, output_seq_lengths = self._embed_and_pack(
-            output_batch,
-            device=device)
-        output_all_hidden, hidden = self.output_encoder(
-            packed_output,
-            hidden=hidden,
-            attended=(input_all_hidden, input_seq_lengths),
+        hidden, all_hidden = self.encode(
+            batch=batch,
             device=device,
         )
-
         return self.program_decoder(
             hidden=hidden,
-            output_all_hidden=(output_all_hidden, output_seq_lengths),
+            output_all_hidden=all_hidden,
             num_examples=num_examples,
             max_program_length=max_program_length,
             device=device,
