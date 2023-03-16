@@ -104,7 +104,7 @@ class RobustFill(nn.Module):
     def encode(
             self,
             batch: List,
-            device: Optional[Union[torch.device, int]],
+            device: Optional[Union[torch.device, int]] = None,
             ) -> Tuple[
                 Tuple[torch.Tensor, torch.Tensor],
                 Tuple[torch.Tensor, torch.Tensor]]:
@@ -186,7 +186,7 @@ class ProgramDecoder(nn.Module):
             hidden: Tuple[torch.Tensor, torch.Tensor],
             output_all_hidden: Tuple[torch.Tensor, torch.Tensor],
             num_examples: int,
-            device: Optional[Union[torch.device, int]],
+            device: Optional[Union[torch.device, int]] = None,
             ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
         Decode a single token.

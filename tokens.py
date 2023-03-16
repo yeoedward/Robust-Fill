@@ -223,7 +223,7 @@ class Tokenizer:
             if next_op == EOS:
                 break
 
-            if issubclass(next_op, op.Concat):
+            if isinstance(next_op, type) and issubclass(next_op, op.Concat):
                 i += 1
                 continue
 
