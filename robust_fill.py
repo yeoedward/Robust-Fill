@@ -159,20 +159,28 @@ class ProgramDecoder(nn.Module):
 
     def decode(
             self,
-            input_: torch.Tensor,
+            input_: Optional[torch.Tensor],
             hidden: Tuple[torch.Tensor, torch.Tensor],
             output_all_hidden: Tuple[torch.Tensor, torch.Tensor],
             num_examples: int,
-            device: Optional[Union[torch.device, int]]) -> torch.Tensor:
+            device: Optional[Union[torch.device, int]],
+            ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         """
-        Single step of a forward pass through the decoder.
+        Decode a single token.
 
-        :param input_: Input to the decoder.
+        :param input_: Input to the decoder (batch_size, program_size).
         :param hidden: Hidden states of LSTM from output encoder.
         :param output_all_hidden: Entire sequence of hidden states of
             LSTM from output encoder (to be attended to).
         :param num_examples: The number of examples in the batch.
+        :returns: Program embedding and hidden states.
         """
+        # (batch_size, program_size).
+        if input_ is None:
+            input_ = torch.zeros(
+                hidden[0].size()[1],
+                self.program_size,
+                device=device)
         hidden = self.program_lstm(
             input_,
             hidden=hidden,
@@ -191,7 +199,7 @@ class ProgramDecoder(nn.Module):
         # (batch_size, hidden_size)
         pooled = F.max_pool1d(unpooled, num_examples).squeeze(2)
         # (batch_size, program_size)
-        return self.softmax_linear(pooled)
+        return self.softmax_linear(pooled), hidden
 
     def forward(
             self,
@@ -211,14 +219,10 @@ class ProgramDecoder(nn.Module):
             to generate.
         """
         program_sequence = []
-        # (batch_size, program_size).
-        decoder_input = torch.zeros(
-            hidden[0].size()[1],
-            self.program_size,
-            device=device)
-
+        # (batch_size [with examples], program_size).
+        decoder_input = None
         for _ in range(max_program_length):
-            program_embedding = self.decode(
+            program_embedding, hidden = self.decode(
                 input_=decoder_input,
                 hidden=hidden,
                 output_all_hidden=output_all_hidden,
