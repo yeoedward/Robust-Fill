@@ -141,15 +141,16 @@ class RobustFill(nn.Module):
     def forward(
             self,
             batch: List,
-            max_program_length: int,
+            target: torch.Tensor,
             device: Optional[Union[torch.device, int]] = None) -> torch.Tensor:
         """
         Forward pass through RobustFill.
 
         :param batch: List (batch_size) of tuples (input, output) of
             list (sequence_length) of token indices.
-        :param max_program_length: The maximum length of the
-            program to generate.
+        :param target: The target program output used for
+            teacher-forcing during decoding.
+            (sequence_length, batch_size, program_size)
         :param device: The device to send the input data to.
         """
         num_examples = RobustFill._check_num_examples(batch)
@@ -161,7 +162,7 @@ class RobustFill(nn.Module):
             hidden=hidden,
             output_all_hidden=all_hidden,
             num_examples=num_examples,
-            max_program_length=max_program_length,
+            target=target,
             device=device,
         )
 
@@ -200,7 +201,7 @@ class ProgramDecoder(nn.Module):
         """
         # (batch_size, program_size).
         if input_ is None:
-            input_ = torch.zeros(
+            input_ = torch.ones(
                 hidden[0].size()[1],
                 self.program_size,
                 device=device)
@@ -229,7 +230,7 @@ class ProgramDecoder(nn.Module):
             hidden: Tuple[torch.Tensor, torch.Tensor],
             output_all_hidden: Tuple[torch.Tensor, torch.Tensor],
             num_examples: int,
-            max_program_length: int,
+            target: torch.Tensor,
             device: Optional[Union[torch.device, int]]) -> torch.Tensor:
         """
         Forward pass through the decoder.
@@ -240,11 +241,17 @@ class ProgramDecoder(nn.Module):
         :param num_examples: The number of examples in the batch.
         :param max_program_length: The maximum length of the program
             to generate.
+        :param target: The target program output used for
+            teacher-forcing during decoding.
+            (sequence_length, batch_size, program_size)
         """
         program_sequence = []
-        # (batch_size [with examples], program_size).
-        decoder_input = None
-        for _ in range(max_program_length):
+        for i in range(target.size()[0]):
+            decoder_input = None
+            if i > 0:
+                # (batch_size [with examples], program_size).
+                decoder_input = (
+                    target[i-1].repeat_interleave(num_examples, dim=0))
             program_embedding, hidden = self.decode(
                 input_=decoder_input,
                 hidden=hidden,
@@ -253,9 +260,6 @@ class ProgramDecoder(nn.Module):
                 device=device,
             )
             program_sequence.append(program_embedding.unsqueeze(0))
-            decoder_input = (
-                F.softmax(program_embedding, dim=1)
-                .repeat_interleave(num_examples, dim=0))
 
         return torch.cat(program_sequence)
 

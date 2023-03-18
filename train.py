@@ -51,33 +51,21 @@ StepInfo = namedtuple(
 def cross_entropy_loss(
         actual: torch.Tensor,
         expected: List[List[int]],
-        max_program_length: int,
-        device: Optional[Union[torch.device, int]] = None) -> torch.Tensor:
+        padding_index: int) -> torch.Tensor:
     """
     Compute cross-entropy loss ignoring padding tokens due to
     different program lengths.
     """
     program_size = actual.size()[2]
-    padding_index = -1
     # Reshape actual_programs (seq length, batch size, program size)
-    # to (batch size * seq length, program size).
-    reshaped_actual_programs = (
-        actual.transpose(1, 0)
-        # Necessary because .view() expects contiguity but
-        # .transpose() doesn't copy.
-        .contiguous()
-        .view(-1, program_size)
-    )
-    # Convert expected programs from list of lists of ints (uneven lengths)
-    # to a tensor of (batch size * max length) with padding tokens.
-    padded_expected_programs = torch.tensor([
-            program[i] if i < len(program) else padding_index
-            for program in expected
-            for i in range(max_program_length)
-    ], device=device)
+    # to (seq length * batch_size, program size).
+    reshaped_actual_programs = actual.view(-1, program_size)
+    # Convert expected programs (seq length, batch_size)
+    # to a tensor of (seq length * batch_size).
+    expected_programs = expected.view(-1)
     loss = F.cross_entropy(
         reshaped_actual_programs,
-        padded_expected_programs,
+        expected_programs,
         ignore_index=padding_index,
     )
     return loss
@@ -102,16 +90,34 @@ class Trainer:
         """Execute a single forward-backward pass on a minibatch."""
         expected_programs, examples = self.config.sample()
         max_length = Trainer._max_program_length(expected_programs)
+
+        # Convert expected programs from list of lists of ints (uneven lengths)
+        # to a tensor of (max sequence_length, batch_size) with padding index.
+        padding_index = -1
+        padded_expected_programs = torch.tensor([
+                [
+                    program[i] if i < len(program) else padding_index
+                    for program in expected_programs
+                ]
+                for i in range(max_length)
+        ], device=self.config.device)
+
+        expected_program_embeddings = F.one_hot(
+            torch.where(
+                padded_expected_programs != padding_index,
+                padded_expected_programs,
+                torch.zeros_like(padded_expected_programs)),
+            num_classes=self.config.model.program_decoder.program_size)
+
         actual_programs = self.config.model(
             examples,
-            max_length,
+            target=expected_program_embeddings,
             device=self.config.device)
 
         loss = cross_entropy_loss(
             actual=actual_programs,
-            expected=expected_programs,
-            max_program_length=max_length,
-            device=self.config.device)
+            expected=padded_expected_programs,
+            padding_index=padding_index)
 
         self.config.optimizer.zero_grad()
         loss.backward()
