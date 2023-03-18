@@ -30,6 +30,7 @@ class Config(NamedTuple):
     sample: Callable[[], Tuple[List, List]]
     optimizer: optim.Optimizer
     clip_grad_value: float
+    program_size: int
     device: Optional[Union[torch.device, int]]
     checkpoint_filename: str
     checkpoint_step_size: int
@@ -107,7 +108,7 @@ class Trainer:
                 padded_expected_programs != padding_index,
                 padded_expected_programs,
                 torch.zeros_like(padded_expected_programs)),
-            num_classes=self.config.model.program_decoder.program_size)
+            num_classes=self.config.program_size)
 
         actual_programs = self.config.model(
             examples,
@@ -243,11 +244,12 @@ def easy_config() -> Config:
     as dry-run.
     """
     string_size = 3
+    program_size = 2
     robust_fill = RobustFill(
         string_size=string_size,
         string_embedding_size=2,
         hidden_size=8,
-        program_size=2,
+        program_size=program_size,
     )
     optimizer = optim.SGD(robust_fill.parameters(), lr=0.01)
 
@@ -263,6 +265,7 @@ def easy_config() -> Config:
         optimizer=optimizer,
         clip_grad_value=1.0,
         sample=sample,
+        program_size=program_size,
         device=None,  # CPU training.
         checkpoint_filename=None,
         checkpoint_step_size=100,
@@ -300,12 +303,13 @@ def full_config(rank: Optional[int] = None) -> Config:
     """
     tokenizer = Tokenizer.create()
 
+    program_size = len(tokenizer.op_token_table)
     checkpoint_filename = './checkpoint.pth'
     model = RobustFill(
         string_size=len(op.CHARACTER),
         string_embedding_size=128,
         hidden_size=512,
-        program_size=len(tokenizer.op_token_table),
+        program_size=program_size,
     )
     optimizer = optim.SGD(model.parameters(), lr=0.01)
 
@@ -336,6 +340,7 @@ def full_config(rank: Optional[int] = None) -> Config:
         model=model,
         optimizer=optimizer,
         clip_grad_value=1.0,
+        program_size=program_size,
         sample=sample,
         device=device,
         checkpoint_filename=checkpoint_filename,
