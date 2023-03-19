@@ -1,7 +1,8 @@
 from collections import namedtuple
 import logging
-import random
-from typing import Callable, Union
+from typing import Callable, List, Union
+
+import torch
 
 import operators as op
 
@@ -19,10 +20,28 @@ Example = namedtuple(
 )
 
 
+def randint(a: int, b: int) -> int:
+    """
+    Generate a random integer in the range [a, b).
+
+    We use torch instead of Python's `random` so it is easy to set the seed.
+    """
+    return torch.randint(low=a, high=b, size=(1,)).item()
+
+
+def randchoice(candidates: List):
+    """Choose a random element from `candidates`."""
+    idx = randint(0, len(candidates))
+    return candidates[idx]
+
+
 def sample_string(max_characters: int) -> str:
     """Generate a random string of length at most `max_characters`."""
-    num_characters = random.randint(1, max_characters)
-    random_string = ''.join(random.choices(op.CHARACTER, k=num_characters))
+    num_characters = randint(1, max_characters+1)
+    random_string = ''.join((
+        randchoice(op.CHARACTER)
+        for _ in range(num_characters)
+    ))
     return random_string
 
 
@@ -94,7 +113,7 @@ def sample_program(max_expressions: int) -> op.Program:
     Generate a random program with at most
     `max_expressions` expressions.
     """
-    num_expressions = random.randint(1, max_expressions)
+    num_expressions = randint(1, max_expressions+1)
     return op.Concat(*[
         sample_expression()
         for _ in range(num_expressions)
@@ -106,7 +125,7 @@ def sample_from(*samplers: Callable[[], op.Expression]) -> op.Expression:
     Helper function to generate a random expression from
     the given samplers.
     """
-    choice = random.choice(samplers)
+    choice = randchoice(samplers)
     return choice()
 
 
@@ -154,13 +173,13 @@ def sample_Compose() -> op.Compose:
 
 def sample_ConstStr() -> op.ConstStr:
     """Generate a random ConstStr operator."""
-    char = random.choice(op.CHARACTER)
+    char = randchoice(op.CHARACTER)
     return op.ConstStr(char)
 
 
 def sample_position() -> int:
     """Generate a random position."""
-    return random.randint(*op.POSITION)
+    return randint(op.POSITION[0], op.POSITION[1]+1)
 
 
 def sample_SubStr() -> op.SubStr:
@@ -172,7 +191,7 @@ def sample_SubStr() -> op.SubStr:
 
 def sample_Boundary() -> op.Boundary:
     """Generate a random boundary."""
-    return random.choice(list(op.Boundary))
+    return randchoice(list(op.Boundary))
 
 
 def sample_GetSpan() -> op.GetSpan:
@@ -189,12 +208,12 @@ def sample_GetSpan() -> op.GetSpan:
 
 def sample_Type() -> op.Type:
     """Generate a random Type."""
-    return random.choice(list(op.Type))
+    return randchoice(list(op.Type))
 
 
 def sample_index() -> int:
     """Generate a random index."""
-    return random.choice(op.INDEX)
+    return randchoice(op.INDEX)
 
 
 def sample_GetToken() -> op.GetToken:
@@ -206,13 +225,13 @@ def sample_GetToken() -> op.GetToken:
 
 def sample_ToCase() -> op.ToCase:
     """Generate a random ToCase operator."""
-    case = random.choice(list(op.Case))
+    case = randchoice(list(op.Case))
     return op.ToCase(case)
 
 
 def sample_delimiter() -> str:
     """Generate a random delimiter."""
-    return random.choice(op.DELIMITER)
+    return randchoice(op.DELIMITER)
 
 
 def sample_Replace() -> op.Replace:
@@ -229,7 +248,7 @@ def sample_Trim() -> op.Trim:
 
 def sample_dsl_regex() -> Union[op.Type, str]:
     """Generate a random DSL regex."""
-    return random.choice(list(op.Type) + list(op.DELIMITER))
+    return randchoice(list(op.Type) + list(op.DELIMITER))
 
 
 def sample_GetUpto() -> op.GetUpto:
@@ -247,7 +266,7 @@ def sample_GetFrom() -> op.GetFrom:
 def sample_GetFirst() -> op.GetFirst:
     """Generate a random GetFirst operator."""
     type_ = sample_Type()
-    index = random.choice([
+    index = randchoice([
         i for i in op.INDEX
         if i > 0
     ])

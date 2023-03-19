@@ -2,7 +2,6 @@ import argparse
 from collections import namedtuple
 import os
 import pprint as pp
-import random
 from typing import Callable, List, NamedTuple, Optional, Tuple, Union
 
 import torch
@@ -15,7 +14,7 @@ from torch.profiler import profile, ProfilerActivity, schedule
 from torch.distributed import init_process_group
 
 from robust_fill import RobustFill
-from sample import sample_example
+from sample import randint, sample_example
 from tokens import Tokenizer
 import operators as op
 
@@ -188,7 +187,7 @@ def generate_program(batch_size: int) -> List[List[int]]:
     """Generate some simple and short programs for dry-run training."""
     return [
         # Only two programs.
-        [0] if random.randint(0, 1) == 0 else [1, 0]
+        [0] if randint(0, 2) == 0 else [1, 0]
         for _ in range(batch_size)
     ]
 
@@ -208,7 +207,7 @@ def generate_data(
     for program in program_batch:
         examples = []
         for _ in range(num_examples):
-            input_sequence = [random.randint(0, string_size-1)]
+            input_sequence = [randint(0, string_size)]
 
             # Only two programs here (copy and copy-twice).
             if program == [0]:

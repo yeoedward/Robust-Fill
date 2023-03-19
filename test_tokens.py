@@ -1,5 +1,6 @@
-import random
 from unittest import TestCase
+
+import torch
 
 from sample import sample_program, sample_string
 from tokens import Tokenizer
@@ -14,7 +15,7 @@ class TestTokens(TestCase):
         self.assertEqual(expected_num_tokens, len(tokenizer.op_token_table))
 
     def test_token_table_coverage_smoke_test(self):
-        random.seed(1337)
+        torch.manual_seed(1337)
         tokenizer = Tokenizer.create()
 
         num_samples = 1000
@@ -25,7 +26,7 @@ class TestTokens(TestCase):
 
     def test_parsing(self):
         """Test parsing programs from tokens."""
-        random.seed(1337)
+        torch.manual_seed(1337)
         tokenizer = Tokenizer.create()
 
         num_samples = 1000
