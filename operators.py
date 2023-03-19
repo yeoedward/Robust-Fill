@@ -7,12 +7,12 @@ from typing import Any, Dict, List, Union
 
 
 # Inclusive-inclusive interval
-POSITION = [-100, 100]
+POSITION = [-32, 32]
 # 0 is intentionally missing
 INDEX = [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5]
 # Picking the first few for convenience
 # TODO: Might want to change this later
-DELIMITER = '&,.?!@()[]%{}/:;$#' + whitespace
+DELIMITER = ',.@():#' + whitespace
 # Should this be same as Type.CHAR?
 CHARACTER = ''.join([ascii_letters, digits, DELIMITER])
 

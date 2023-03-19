@@ -8,9 +8,13 @@ from tokens import Tokenizer
 
 class TestTokens(TestCase):
     def test_total_num_tokens(self):
+        """
+        This test makes sure we don't unintentionally change
+        the number of tokens.
+        """
         tokenizer = Tokenizer.create()
 
-        expected_num_tokens = 1118
+        expected_num_tokens = 538
         self.assertEqual(expected_num_tokens, len(tokenizer.token_op_table))
         self.assertEqual(expected_num_tokens, len(tokenizer.op_token_table))
 
@@ -21,7 +25,7 @@ class TestTokens(TestCase):
         num_samples = 1000
         for _ in range(num_samples):
             sample_program(10).to_tokens(tokenizer.op_token_table)
-            for char in sample_string(30):
+            for char in sample_string(32):
                 tokenizer.string_token_table[char]
 
     def test_parsing(self):

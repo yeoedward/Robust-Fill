@@ -32,7 +32,6 @@ class Tokenizer:
         token_op_table = [
             EOS,
             op.Concat,
-            op.Compose,
             op.ConstStr,
             op.SubStr,
             op.GetSpan,
@@ -70,9 +69,6 @@ class Tokenizer:
 
         for type_ in op.Type:
             token_op_table.append(type_)
-
-        for case in op.Case:
-            token_op_table.append(case)
 
         for boundary in op.Boundary:
             token_op_table.append(boundary)
