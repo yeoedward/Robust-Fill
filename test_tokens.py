@@ -24,8 +24,9 @@ class TestTokens(TestCase):
 
         num_samples = 1000
         for _ in range(num_samples):
-            sample_program(10).to_tokens(tokenizer.op_token_table)
-            for char in sample_string(32):
+            prog, h = sample_program(10)
+            prog.to_tokens(tokenizer.op_token_table)
+            for char in sample_string(32, h):
                 tokenizer.string_token_table[char]
 
     def test_parsing(self):
@@ -35,7 +36,7 @@ class TestTokens(TestCase):
 
         num_samples = 1000
         for _ in range(num_samples):
-            program = sample_program(10)
+            program, _ = sample_program(10)
             tokens = program.to_tokens(tokenizer.op_token_table)
             parsed = tokenizer.parse_program(tokens)
             self.assertEqual(str(program), str(parsed))

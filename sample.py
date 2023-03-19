@@ -1,6 +1,7 @@
 from collections import namedtuple
 import logging
-from typing import Callable, List, Union
+from string import ascii_letters, ascii_lowercase, ascii_uppercase, digits
+from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 
@@ -20,6 +21,61 @@ Example = namedtuple(
 )
 
 
+class Heuristics:
+    """
+    Tracks various statistics when generating programs.
+
+    These statistics are used in heuristics to generate instructive
+    input-output string examples to allow the neural net to learn faster.
+    """
+
+    def __init__(
+            self,
+            characters: Optional[dict] = None,
+            types: Optional[dict] = None,
+            min_length: int = 1) -> None:
+        """
+        Construct a new heuristics object.
+
+        :param characters: A dictionary counting characters that are in
+            the program.
+        :param types: A dictionary counting types that are in the program.
+        :param min_length: The minimum length that the example string
+            should be e.g. based on the SubStr operator's indices.
+        """
+        self.characters = {} if characters is None else characters
+        self.types = {} if types is None else types
+        self._min_length = min_length
+
+    def merge(self, other: 'Heuristics') -> None:
+        """Merge two heuristics."""
+        for char, count in other.characters.items():
+            self.characters[char] = max(self.characters.get(char, 0), count)
+
+        for type_, count in other.types.items():
+            self.types[type_] = max(self.types.get(type_, 0), count)
+
+        self._min_length = max(self._min_length, other._min_length)
+
+    def add_dsl_regex(self, r: Union[op.Type, str], count: int) -> None:
+        """Add a DSL regex to the heuristics."""
+        if isinstance(r, op.Type):
+            self.types[r] = self.types.get(r, 0) + count
+            return
+
+        assert r in op.DELIMITER
+        self.characters[r] = self.characters.get(r, 0) + count
+
+    def min_length(self) -> int:
+        """Get the minimum length that the example strings should have."""
+        ml = self._min_length
+        for _, count in self.characters.items():
+            ml = max(ml, count)
+        for _, count in self.types.items():
+            ml = max(ml, count)
+        return ml
+
+
 def randint(a: int, b: int) -> int:
     """
     Generate a random integer in the range [a, b).
@@ -35,14 +91,69 @@ def randchoice(candidates: List):
     return candidates[idx]
 
 
-def sample_string(max_characters: int) -> str:
+def sample_string(max_characters: int, h: Heuristics) -> str:
     """Generate a random string of length at most `max_characters`."""
-    num_characters = randint(1, max_characters+1)
-    random_string = ''.join((
-        randchoice(op.CHARACTER)
-        for _ in range(num_characters)
-    ))
-    return random_string
+    num_characters = randint(
+        min(h.min_length(), max_characters),
+        max_characters+1)
+
+    chars = h.characters.copy()
+    types = h.types.copy()
+
+    chosen = []
+    for num_chosen in range(num_characters):
+        # These are heuristics to generate instructive example strings.
+        # We make it more likely to generate a character:
+        # 1. That occurs in the program, or
+        # 2. Whose type appears in the program.
+        char_count = sum(chars.values())
+        type_count = sum(types.values())
+        random_count = num_characters - num_chosen - char_count - type_count
+        if random_count < 0:
+            random_count = 0
+
+        r = randint(0, char_count + type_count + random_count)
+        if r < char_count:
+            # We pick one of the characters that appears in the program.
+            chosen_char = randchoice([
+                char
+                for char, count in chars.items()
+                for _ in range(count)  # Weight by count.
+            ])
+            chosen.append(chosen_char)
+            continue
+
+        if char_count <= r < char_count + type_count:
+            # We pick a character whose type appears in the program.
+            chosen_type = randchoice([
+                type_
+                for type_, count in types.items()
+                for _ in range(count)  # Weight by count.
+            ])
+            chosen_type_instance = None
+            if chosen_type in [op.Type.NUMBER, op.Type.DIGIT]:
+                chosen_type_instance = randchoice(digits)
+            elif chosen_type == op.Type.WORD:
+                chosen_type_instance = randchoice(ascii_letters)
+            elif chosen_type == op.Type.ALPHANUM:
+                chosen_type_instance = randchoice(ascii_letters + digits)
+            elif chosen_type == op.Type.ALL_CAPS:
+                chosen_type_instance = randchoice(ascii_uppercase + digits)
+            elif chosen_type == op.Type.PROP_CASE:
+                chosen_type_instance = randchoice(ascii_letters)
+            elif chosen_type == op.Type.LOWER:
+                chosen_type_instance = randchoice(ascii_lowercase)
+            else:
+                assert chosen_type == op.Type.CHAR
+                chosen_type_instance = randchoice(op.CHARACTER)
+
+            chosen.append(chosen_type_instance)
+            continue
+
+        # Default to uniformly selecting a character.
+        chosen.append(randchoice(op.CHARACTER))
+
+    return ''.join(chosen)
 
 
 def sample_example(
@@ -52,7 +163,8 @@ def sample_example(
         max_empty_strings: int = 0,
         num_strings: int = 4,
         discard_program_num_empty: int = 100,
-        discard_program_num_exceptions: int = 100) -> Example:
+        discard_program_num_exceptions: int = 100,
+        discard_program_num_too_long: int = 100) -> Example:
     """
     Generate a random example for training.
 
@@ -68,13 +180,13 @@ def sample_example(
     """
     num_discarded = 0
     while True:
-        program = sample_program(max_expressions)
+        program, h = sample_program(max_expressions)
 
-        num_empty, num_exception = 0, 0
+        num_empty, num_too_long, num_exception = 0, 0, 0
         sampled_strings = []
 
         while True:
-            string = sample_string(max_characters)
+            string = sample_string(max_characters, h)
             try:
                 transformed = program.eval(string)
 
@@ -84,8 +196,10 @@ def sample_example(
                     num_empty += 1
                     if num_empty <= max_empty_strings:
                         sampled_strings.append((string, transformed))
-                else:
+                elif len(transformed) < 100:
                     sampled_strings.append((string, transformed))
+                else:
+                    num_too_long += 1
 
             except IndexError:
                 num_exception += 1
@@ -96,31 +210,38 @@ def sample_example(
             # We have to throw programs away because some of them always
             # throw IndexError's or produce empty strings.
             if (num_empty > discard_program_num_empty
-                    or num_exception > discard_program_num_exceptions):
+                    or num_exception > discard_program_num_exceptions
+                    or num_too_long > discard_program_num_too_long):
                 LOGGER.debug('Throwing program away')
                 LOGGER.debug(
-                    'Empty: %s, exception: %s',
+                    'Empty: %s, exception: %s, too long: %s',
                     num_empty,
                     num_exception,
+                    num_too_long,
                 )
                 LOGGER.debug(program)
                 num_discarded += 1
                 break
 
 
-def sample_program(max_expressions: int) -> op.Program:
+def sample_program(max_expressions: int) -> Tuple[op.Program, Heuristics]:
     """
     Generate a random program with at most
     `max_expressions` expressions.
     """
     num_expressions = randint(1, max_expressions+1)
-    return op.Concat(*[
-        sample_expression()
-        for _ in range(num_expressions)
-    ])
+    exps = []
+    merged_h = Heuristics()
+    for _ in range(num_expressions):
+        exp, h = sample_expression()
+        merged_h.merge(h)
+        exps.append(exp)
+    return op.Concat(*exps), merged_h
 
 
-def sample_from(*samplers: Callable[[], op.Expression]) -> op.Expression:
+def sample_from(
+        *samplers: Callable[[], Tuple[op.Expression, Heuristics]],
+        ) -> Tuple[op.Expression, Heuristics]:
     """
     Helper function to generate a random expression from
     the given samplers.
@@ -129,7 +250,7 @@ def sample_from(*samplers: Callable[[], op.Expression]) -> op.Expression:
     return choice()
 
 
-def sample_expression() -> op.Expression:
+def sample_expression() -> Tuple[op.Expression, Heuristics]:
     """Generate a random expression."""
     return sample_from(
         sample_substring,
@@ -139,7 +260,7 @@ def sample_expression() -> op.Expression:
     )
 
 
-def sample_substring() -> op.Substring:
+def sample_substring() -> Tuple[op.Substring, Heuristics]:
     """Generate a random substring."""
     return sample_from(
         sample_SubStr,
@@ -147,7 +268,7 @@ def sample_substring() -> op.Substring:
     )
 
 
-def sample_nesting() -> op.Nesting:
+def sample_nesting() -> Tuple[op.Nesting, Heuristics]:
     """Generate a random nesting."""
     return sample_from(
         sample_GetToken,
@@ -161,20 +282,21 @@ def sample_nesting() -> op.Nesting:
     )
 
 
-def sample_Compose() -> op.Compose:
+def sample_Compose() -> Tuple[op.Compose, Heuristics]:
     """Generate a random Compose operator."""
-    nesting = sample_nesting()
-    nesting_or_substring = sample_from(
+    nesting, h1 = sample_nesting()
+    nesting_or_substring, h2 = sample_from(
         sample_nesting,
         sample_substring,
     )
-    return op.Compose(nesting, nesting_or_substring)
+    h1.merge(h2)
+    return op.Compose(nesting, nesting_or_substring), h1
 
 
-def sample_ConstStr() -> op.ConstStr:
+def sample_ConstStr() -> Tuple[op.ConstStr, Heuristics]:
     """Generate a random ConstStr operator."""
     char = randchoice(op.CHARACTER)
-    return op.ConstStr(char)
+    return op.ConstStr(char), Heuristics()
 
 
 def sample_position() -> int:
@@ -182,11 +304,12 @@ def sample_position() -> int:
     return randint(op.POSITION[0], op.POSITION[1]+1)
 
 
-def sample_SubStr() -> op.SubStr:
+def sample_SubStr() -> Tuple[op.SubStr, Heuristics]:
     """Generate a random SubStr operator."""
     pos1 = sample_position()
     pos2 = sample_position()
-    return op.SubStr(pos1, pos2)
+    h = Heuristics(min_length=max(abs(pos1), abs(pos2)))
+    return op.SubStr(pos1, pos2), h
 
 
 def sample_Boundary() -> op.Boundary:
@@ -194,16 +317,25 @@ def sample_Boundary() -> op.Boundary:
     return randchoice(list(op.Boundary))
 
 
-def sample_GetSpan() -> op.GetSpan:
+def sample_GetSpan() -> Tuple[op.GetSpan, Heuristics]:
     """Generate a random GetSpan operator."""
+    dsl_regex1 = sample_dsl_regex()
+    index1 = sample_index()
+    dsl_regex2 = sample_dsl_regex()
+    index2 = sample_index()
+
+    h = Heuristics()
+    h.add_dsl_regex(dsl_regex1, abs(index1))
+    h.add_dsl_regex(dsl_regex2, abs(index2))
+
     return op.GetSpan(
-        dsl_regex1=sample_dsl_regex(),
-        index1=sample_index(),
+        dsl_regex1=dsl_regex1,
+        index1=index1,
         bound1=sample_Boundary(),
-        dsl_regex2=sample_dsl_regex(),
-        index2=sample_index(),
+        dsl_regex2=dsl_regex2,
+        index2=index2,
         bound2=sample_Boundary(),
-    )
+    ), h
 
 
 def sample_Type() -> op.Type:
@@ -216,17 +348,18 @@ def sample_index() -> int:
     return randchoice(op.INDEX)
 
 
-def sample_GetToken() -> op.GetToken:
+def sample_GetToken() -> Tuple[op.GetToken, Heuristics]:
     """Generate a random GetToken operator."""
     type_ = sample_Type()
     index = sample_index()
-    return op.GetToken(type_, index)
+    h = Heuristics(types={type_: abs(index)})
+    return op.GetToken(type_, index), h
 
 
-def sample_ToCase() -> op.ToCase:
+def sample_ToCase() -> Tuple[op.ToCase, Heuristics]:
     """Generate a random ToCase operator."""
     case = randchoice(list(op.Case))
-    return op.ToCase(case)
+    return op.ToCase(case), Heuristics()
 
 
 def sample_delimiter() -> str:
@@ -234,16 +367,17 @@ def sample_delimiter() -> str:
     return randchoice(op.DELIMITER)
 
 
-def sample_Replace() -> op.Replace:
+def sample_Replace() -> Tuple[op.Replace, Heuristics]:
     """Generate a random Replace operator."""
     delim1 = sample_delimiter()
     delim2 = sample_delimiter()
-    return op.Replace(delim1, delim2)
+    h = Heuristics(characters={delim1: 1})
+    return op.Replace(delim1, delim2), h
 
 
-def sample_Trim() -> op.Trim:
+def sample_Trim() -> Tuple[op.Trim, Heuristics]:
     """Generate a random Trim operator."""
-    return op.Trim()
+    return op.Trim(), Heuristics()
 
 
 def sample_dsl_regex() -> Union[op.Type, str]:
@@ -251,29 +385,35 @@ def sample_dsl_regex() -> Union[op.Type, str]:
     return randchoice(list(op.Type) + list(op.DELIMITER))
 
 
-def sample_GetUpto() -> op.GetUpto:
+def sample_GetUpto() -> Tuple[op.GetUpto, Heuristics]:
     """Generate a random GetUpto operator."""
-    dsl_regex = sample_dsl_regex()
-    return op.GetUpto(dsl_regex)
+    r = sample_dsl_regex()
+    h = Heuristics()
+    h.add_dsl_regex(r, 1)
+    return op.GetUpto(r), h
 
 
-def sample_GetFrom() -> op.GetFrom:
+def sample_GetFrom() -> Tuple[op.GetFrom, Heuristics]:
     """Generate a random GetFrom operator."""
-    dsl_regex = sample_dsl_regex()
-    return op.GetFrom(dsl_regex)
+    r = sample_dsl_regex()
+    h = Heuristics()
+    h.add_dsl_regex(r, 1)
+    return op.GetFrom(r), h
 
 
-def sample_GetFirst() -> op.GetFirst:
+def sample_GetFirst() -> Tuple[op.GetFirst, Heuristics]:
     """Generate a random GetFirst operator."""
     type_ = sample_Type()
     index = randchoice([
         i for i in op.INDEX
         if i > 0
     ])
-    return op.GetFirst(type_, index)
+    h = Heuristics(types={type_: index})
+    return op.GetFirst(type_, index), h
 
 
-def sample_GetAll() -> op.GetAll:
+def sample_GetAll() -> Tuple[op.GetAll, Heuristics]:
     """Generate a random GetAll operator."""
     type_ = sample_Type()
-    return op.GetAll(type_)
+    h = Heuristics(types={type_: 1})
+    return op.GetAll(type_), h
