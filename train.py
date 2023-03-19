@@ -316,7 +316,7 @@ def full_config(rank: Optional[int] = None) -> Config:
     def sample():
         return sample_full(
             tokenizer,
-            batch_size=64,
+            batch_size=32,
             max_expressions=10,
             max_characters=32,
         )
