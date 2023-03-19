@@ -344,7 +344,7 @@ def full_config(rank: Optional[int] = None) -> Config:
         sample=sample,
         device=device,
         checkpoint_filename=checkpoint_filename,
-        checkpoint_step_size=100,
+        checkpoint_step_size=10,
         checkpoint_print_tensors=False,
     )
 
