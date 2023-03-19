@@ -1,10 +1,13 @@
 from unittest import TestCase
 
+import torch
+
 from sample import sample_example
 
 
 class TestSample(TestCase):
     def test_sample_example_smoke_test(self):
+        torch.manual_seed(1337)
         num_discarded_programs = 0
         num_tries = 100
         for _ in range(num_tries):
