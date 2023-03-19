@@ -137,19 +137,20 @@ class Trainer:
         print('Checkpointing at example {}'.format(example_idx))
         print('Loss: {}'.format(step_info.loss))
         if self.config.checkpoint_print_tensors:
-            print_batch_limit = 3
+            with torch.no_grad():
+                print_batch_limit = 3
 
-            print('Examples:')
-            pp.pprint(step_info.examples[:print_batch_limit])
+                print('Examples:')
+                pp.pprint(step_info.examples[:print_batch_limit])
 
-            print('Expected programs:')
-            print(step_info.expected_programs[:print_batch_limit])
+                print('Expected programs:')
+                print(step_info.expected_programs[:print_batch_limit])
 
-            print('Actual programs:')
-            print(
-                F.softmax(step_info.actual_programs, dim=2)
-                .transpose(1, 0)[:print_batch_limit, :, :]
-            )
+                print('Actual programs:')
+                print(
+                    F.softmax(step_info.actual_programs, dim=2)
+                    .transpose(1, 0)[:print_batch_limit, :, :]
+                )
 
         if self.config.checkpoint_filename is not None:
             print('Saving to file {}'.format(
