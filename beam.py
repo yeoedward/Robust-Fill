@@ -2,8 +2,16 @@ from heapq import heappush, heappushpop
 from typing import List, Tuple
 import torch
 import torch.nn.functional as F
-from tokens import Tokenizer
+from tokens import EOS, Tokenizer
 from robust_fill import RobustFill
+
+
+def add_cand(heap: List, width: int, cand: Tuple) -> None:
+    """Add candidate to the heap, keeping only the top `width` candidates."""
+    if len(heap) < width:
+        heappush(heap, cand)
+    else:
+        heappushpop(heap, cand)
 
 
 def beam_search(
@@ -40,9 +48,16 @@ def beam_search(
             with torch.no_grad():
                 input_ = None
                 if len(decoder_input) > 0:
+                    prev = decoder_input[-1:]
+                    if prev[0] == tokenizer.op_token_table[EOS]:
+                        # Program already complete, don't need to decode
+                        # the next token.
+                        add_cand(new_cands, width, cand)
+                        continue
+
                     # Use the previous output as the input to the decoder.
                     input_ = F.one_hot(
-                        torch.LongTensor(decoder_input[-1:]),
+                        torch.LongTensor(prev),
                         num_classes=len(tokenizer.op_token_table))
                     # We have to repeat the input for each example
                     # due to the max-pooling in the decoder.
@@ -57,16 +72,20 @@ def beam_search(
                 topk = torch.topk(logits, k=width, dim=1)
 
                 # Update the frontier.
-                for i in range(width):
+                for i in range(topk.indices.size()[1]):
+                    new_prog = decoder_input + [topk.indices[0, i].item()]
+                    try:
+                        tokenizer.parse_program(new_prog)
+                    except (IndexError, TypeError, ValueError):
+                        # Discard invalid programs.
+                        continue
                     nc = (
                         logit + topk.values[0, i].item(),
-                        decoder_input + [topk.indices[0, i].item()],
+                        new_prog,
                         new_hidden,
                     )
-                    if len(new_cands) < width:
-                        heappush(new_cands, nc)
-                    else:
-                        heappushpop(new_cands, nc)
+                    add_cand(new_cands, width, nc)
+
         candidates = new_cands
 
     return candidates
