@@ -26,10 +26,22 @@ OOM_RETRIES = 2
 PADDING_INDEX = -1
 
 
+# Container for training data.
+# (Before and after tokenization)
+TokenizedExample = namedtuple(
+    'TokenizedExample',
+    [
+        'examples',
+        'strings',
+        'programs',
+    ],
+)
+
+
 # Configuration for training.
 class Config(NamedTuple):
     model: nn.Module
-    sample: Callable[[], Tuple[List, List]]
+    sample: Callable[[], TokenizedExample]
     optimizer: optim.Optimizer
     clip_grad_value: float
     program_size: int
@@ -44,10 +56,9 @@ StepInfo = namedtuple(
     'StepInfo',
     [
         'loss',
-        'examples',
-        'expected_programs_raw',
-        'expected_programs',
-        'actual_programs',
+        'tokenized_example',
+        'expected_program_tensor',
+        'actual_program_tensor',
     ],
 )
 
@@ -109,15 +120,15 @@ class Trainer:
 
     def run_batch(self) -> StepInfo:
         """Execute a single forward-backward pass on a minibatch."""
-        expected_programs, examples = self.config.sample()
-        max_length = Trainer._max_program_length(expected_programs)
+        tokenized_example = self.config.sample()
+        max_length = Trainer._max_program_length(tokenized_example.programs)
 
         # Convert expected programs from list of lists of ints (uneven lengths)
         # to a tensor of (max sequence_length, batch_size) with padding index.
         padded_expected_programs = torch.tensor([
                 [
                     program[i] if i < len(program) else PADDING_INDEX
-                    for program in expected_programs
+                    for program in tokenized_example.programs
                 ]
                 for i in range(max_length)
         ], device=self.config.device)
@@ -130,7 +141,7 @@ class Trainer:
             num_classes=self.config.program_size)
 
         actual_programs = self.config.model(
-            examples,
+            tokenized_example.strings,
             target=expected_program_embeddings,
             device=self.config.device)
 
@@ -147,10 +158,9 @@ class Trainer:
 
         return StepInfo(
             loss=loss,
-            examples=examples,
-            expected_programs_raw=expected_programs,
-            expected_programs=padded_expected_programs,
-            actual_programs=actual_programs)
+            tokenized_example=tokenized_example,
+            expected_program_tensor=padded_expected_programs,
+            actual_program_tensor=actual_programs)
 
     def _save_checkpoint(self, step_info: StepInfo, example_idx: int) -> None:
         """Save training state."""
@@ -158,20 +168,21 @@ class Trainer:
             print('Checkpointing at example {}'.format(example_idx))
             print('Loss: {}'.format(step_info.loss))
             print('Accuracy: {}'.format(accuracy(
-                step_info.actual_programs,
-                step_info.expected_programs)))
+                step_info.actual_program_tensor,
+                step_info.expected_program_tensor)))
             if self.config.checkpoint_print_tensors:
                 print_batch_limit = 3
 
                 print('Examples:')
-                pp.pprint(step_info.examples[:print_batch_limit])
+                pp.pprint(
+                    step_info.tokenized_example.strings[:print_batch_limit])
 
                 print('Expected programs:')
-                print(step_info.expected_programs_raw[:print_batch_limit])
+                print(step_info.tokenized_example.programs[:print_batch_limit])
 
                 print('Actual programs:')
                 print(
-                    F.softmax(step_info.actual_programs, dim=2)
+                    F.softmax(step_info.actual_program_tensor, dim=2)
                     .transpose(1, 0)[:print_batch_limit, :, :]
                 )
 
@@ -251,14 +262,18 @@ def generate_data(
 def sample_easy(
         batch_size: int,
         string_size: int,
-        num_examples: int) -> Tuple[List, List]:
+        num_examples: int) -> TokenizedExample:
     """
     Sample simple and short programs and example input-output data for
     dry-run training.
     """
     programs = generate_program(batch_size)
     examples = generate_data(programs, num_examples, string_size)
-    return programs, examples
+    return TokenizedExample(
+        examples=None,
+        programs=programs,
+        strings=examples,
+    )
 
 
 def easy_config() -> Config:
@@ -300,9 +315,9 @@ def sample_full(
         tokenizer: Tokenizer,
         batch_size: int,
         max_expressions: int,
-        max_characters: int) -> Tuple[List, List]:
+        max_characters: int) -> TokenizedExample:
     """Sample a batch of programs and example input-output data."""
-    program_batch, strings_batch = [], []
+    example_batch, program_batch, strings_batch = [], [], []
 
     for _ in range(batch_size):
         example = sample_example(
@@ -315,9 +330,15 @@ def sample_full(
              tokenizer.tokenize_string(output))
             for input_, output in example.strings
         ]
+        example_batch.append(example)
         program_batch.append(program)
         strings_batch.append(strings)
-    return program_batch, strings_batch
+
+    return TokenizedExample(
+        examples=example_batch,
+        programs=program_batch,
+        strings=strings_batch,
+    )
 
 
 def full_config(rank: Optional[int] = None) -> Config:
