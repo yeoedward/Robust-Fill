@@ -377,7 +377,7 @@ def sample_Replace() -> Tuple[op.Replace, Heuristics]:
 
 def sample_Trim() -> Tuple[op.Trim, Heuristics]:
     """Generate a random Trim operator."""
-    return op.Trim(), Heuristics()
+    return op.Trim(), Heuristics(characters={' ': 1})
 
 
 def sample_dsl_regex() -> Union[op.Type, str]:

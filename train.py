@@ -283,13 +283,13 @@ def easy_config() -> Config:
     """
     string_size = 3
     program_size = 2
-    robust_fill = RobustFill(
+    model = RobustFill(
         string_size=string_size,
         string_embedding_size=2,
         hidden_size=8,
         program_size=program_size,
     )
-    optimizer = optim.SGD(robust_fill.parameters(), lr=0.01)
+    optimizer = optim.Adam(model.parameters(), lr=3e-4)
 
     def sample():
         return sample_easy(
@@ -299,7 +299,7 @@ def easy_config() -> Config:
         )
 
     return Config(
-        model=robust_fill,
+        model=model,
         optimizer=optimizer,
         clip_grad_value=1.0,
         sample=sample,
@@ -355,13 +355,13 @@ def full_config(rank: Optional[int] = None) -> Config:
         hidden_size=512,
         program_size=program_size,
     )
-    optimizer = optim.SGD(model.parameters(), lr=0.01)
+    optimizer = optim.Adam(model.parameters(), lr=3e-4)
 
     def sample():
         return sample_full(
             tokenizer,
             batch_size=32,
-            max_expressions=10,
+            max_expressions=4,
             max_characters=32,
         )
 
