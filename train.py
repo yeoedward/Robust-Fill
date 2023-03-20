@@ -22,6 +22,9 @@ import operators as op
 # Number of times to retry if cuda OOM is encountered.
 OOM_RETRIES = 2
 
+# Padding index used for uneven target program lengths.
+PADDING_INDEX = -1
+
 
 # Configuration for training.
 class Config(NamedTuple):
@@ -42,6 +45,7 @@ StepInfo = namedtuple(
     [
         'loss',
         'examples',
+        'expected_programs_raw',
         'expected_programs',
         'actual_programs',
     ],
@@ -50,8 +54,7 @@ StepInfo = namedtuple(
 
 def cross_entropy_loss(
         actual: torch.Tensor,
-        expected: List[List[int]],
-        padding_index: int) -> torch.Tensor:
+        expected: torch.Tensor) -> torch.Tensor:
     """
     Compute cross-entropy loss ignoring padding tokens due to
     different program lengths.
@@ -66,9 +69,25 @@ def cross_entropy_loss(
     loss = F.cross_entropy(
         reshaped_actual_programs,
         expected_programs,
-        ignore_index=padding_index,
+        ignore_index=PADDING_INDEX,
     )
     return loss
+
+
+def accuracy(actual: torch.Tensor, expected: torch.Tensor) -> float:
+    """
+    Compute accuracy of the model.
+
+    :param actual: (seq length, batch size, program size)
+    :param expected: (seq length, batch size)
+    """
+    # (seq length, batch size)
+    predicted = torch.argmax(actual, dim=2)
+    # (batch size)
+    correct = torch.sum(predicted == expected, dim=0)
+    # (batch size)
+    total = torch.sum(expected != PADDING_INDEX, dim=0)
+    return torch.mean(correct / total).item()
 
 
 class Trainer:
@@ -93,10 +112,9 @@ class Trainer:
 
         # Convert expected programs from list of lists of ints (uneven lengths)
         # to a tensor of (max sequence_length, batch_size) with padding index.
-        padding_index = -1
         padded_expected_programs = torch.tensor([
                 [
-                    program[i] if i < len(program) else padding_index
+                    program[i] if i < len(program) else PADDING_INDEX
                     for program in expected_programs
                 ]
                 for i in range(max_length)
@@ -104,7 +122,7 @@ class Trainer:
 
         expected_program_embeddings = F.one_hot(
             torch.where(
-                padded_expected_programs != padding_index,
+                padded_expected_programs != PADDING_INDEX,
                 padded_expected_programs,
                 torch.zeros_like(padded_expected_programs)),
             num_classes=self.config.program_size)
@@ -116,8 +134,7 @@ class Trainer:
 
         loss = cross_entropy_loss(
             actual=actual_programs,
-            expected=padded_expected_programs,
-            padding_index=padding_index)
+            expected=padded_expected_programs)
 
         self.config.optimizer.zero_grad()
         loss.backward()
@@ -129,22 +146,26 @@ class Trainer:
         return StepInfo(
             loss=loss,
             examples=examples,
-            expected_programs=expected_programs,
+            expected_programs_raw=expected_programs,
+            expected_programs=padded_expected_programs,
             actual_programs=actual_programs)
 
     def _save_checkpoint(self, step_info: StepInfo, example_idx: int) -> None:
         """Save training state."""
-        print('Checkpointing at example {}'.format(example_idx))
-        print('Loss: {}'.format(step_info.loss))
-        if self.config.checkpoint_print_tensors:
-            with torch.no_grad():
+        with torch.no_grad():
+            print('Checkpointing at example {}'.format(example_idx))
+            print('Loss: {}'.format(step_info.loss))
+            print('Accuracy: {}'.format(accuracy(
+                step_info.actual_programs,
+                step_info.expected_programs)))
+            if self.config.checkpoint_print_tensors:
                 print_batch_limit = 3
 
                 print('Examples:')
                 pp.pprint(step_info.examples[:print_batch_limit])
 
                 print('Expected programs:')
-                print(step_info.expected_programs[:print_batch_limit])
+                print(step_info.expected_programs_raw[:print_batch_limit])
 
                 print('Actual programs:')
                 print(
