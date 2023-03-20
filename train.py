@@ -93,6 +93,8 @@ def accuracy(actual: torch.Tensor, expected: torch.Tensor) -> float:
 class Trainer:
     def __init__(self, config: Config):
         self.config = config
+
+    def load_checkpoint_if_exists(self) -> None:
         if (self.config.checkpoint_filename is not None
            and os.path.exists(self.config.checkpoint_filename)):
             print('Starting model from existing checkpoint file: '
@@ -413,6 +415,7 @@ def ddp_run(rank: int, world_size: int) -> None:
     ddp_setup(rank, world_size)
     config = full_config(rank=rank)
     trainer = Trainer(config)
+    trainer.load_checkpoint_if_exists()
     trainer.train()
 
 
@@ -444,6 +447,7 @@ def main() -> None:
             return
         config = full_config()
         trainer = Trainer(config)
+        trainer.load_checkpoint_if_exists()
         trainer.train()
     elif args.mode == 'easy':
         config = easy_config()
