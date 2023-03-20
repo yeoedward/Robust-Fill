@@ -33,19 +33,20 @@ def beam_search(
     :param strings: List of input-output pairs.
     :returns: Top `width` programs and their scores.
     """
-    num_examples = len(strings)
-    str_tokens = [
-        (tokenizer.tokenize_string(input_), tokenizer.tokenize_string(output))
-        for input_, output in strings
-    ]
-    hidden, all_hidden = model.encode([str_tokens])
-    candidates = [(0, [], hidden)]
+    with torch.no_grad():
+        num_examples = len(strings)
+        str_tokens = [
+            (tokenizer.tokenize_string(input_),
+             tokenizer.tokenize_string(output))
+            for input_, output in strings
+        ]
+        hidden, all_hidden = model.encode([str_tokens])
+        candidates = [(0, [], hidden)]
 
-    for _ in range(max_program_length):
-        new_cands = []
-        for cand in candidates:
-            logit, decoder_input, hidden = cand
-            with torch.no_grad():
+        for _ in range(max_program_length):
+            new_cands = []
+            for cand in candidates:
+                logit, decoder_input, hidden = cand
                 input_ = None
                 if len(decoder_input) > 0:
                     prev = decoder_input[-1:]
@@ -86,6 +87,6 @@ def beam_search(
                     )
                     add_cand(new_cands, width, nc)
 
-        candidates = new_cands
+            candidates = new_cands
 
-    return candidates
+        return candidates
