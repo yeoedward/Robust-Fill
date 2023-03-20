@@ -87,13 +87,13 @@ class RobustFill(nn.Module):
         shape (sequence_length, string_embedding_size).
         """
         lengths = torch.as_tensor([len(v) for v in batch], dtype=torch.int64)
-        # (batch_size, sequence_length).
+        # (sequence_length, batch_size).
         padded = pad_sequence([
             torch.as_tensor(v)
             for v in batch
         ])
         padded = padded.to(device)
-        # (batch_size, sequence_length, string_embedding_size).
+        # (sequence_length, batch_size, string_embedding_size).
         embedded = self.embedding(padded)
         packed = pack_padded_sequence(embedded, lengths, enforce_sorted=False)
         # This has to be after pack_padding_sequence because it expects
@@ -192,14 +192,15 @@ class ProgramDecoder(nn.Module):
         """
         Decode a single token.
 
-        :param input_: Input to the decoder (batch_size, program_size).
+        :param input_: Input to the decoder
+            (batch_size * num_examples, program_size).
         :param hidden: Hidden states of LSTM from output encoder.
         :param output_all_hidden: Entire sequence of hidden states of
             LSTM from output encoder (to be attended to).
         :param num_examples: The number of examples in the batch.
         :returns: Program embedding and hidden states.
         """
-        # (batch_size, program_size).
+        # (batch_size * num_examples, program_size).
         if input_ is None:
             input_ = torch.ones(
                 hidden[0].size()[1],
