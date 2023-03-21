@@ -146,6 +146,9 @@ class Tokenizer:
         :returns: A tuple of the constructed expression and the number
             of tokens consumed.
         """
+        if len(tokens) == 0:
+            return None, 0
+
         decoded = self.token_op_table[tokens[0]]
 
         if decoded == EOS:
@@ -158,6 +161,16 @@ class Tokenizer:
                 sub_expr, n = self._parse_expression(
                     tokens[1:],
                     allow_nesting=False)
+
+                if sub_expr is None and n == 1:
+                    # Sub_expr could possibly be a nested expression.
+                    # We return None because we are not sure if we
+                    # should return a Compose or Nesting.
+                    # If we return a Nesting and the next expression
+                    # is a partial Nesting/Substring, there will
+                    # be an error as the parser would expect a concat symbol.
+                    return None, 1
+
                 if isinstance(sub_expr, (op.Nesting, op.Substring)):
                     return op.Compose(expr, sub_expr), n + 1
             return expr, 1
