@@ -2,7 +2,7 @@ import argparse
 from collections import namedtuple
 import os
 import pprint as pp
-import time
+import random
 from typing import Callable, List, NamedTuple, Optional, Tuple, Union
 
 import torch
@@ -292,11 +292,14 @@ def sample_easy(
     )
 
 
-def easy_config() -> Config:
+def easy_config(seed: Optional[int] = None) -> Config:
     """
     Return config for smaller model on simple and short programs
     as dry-run.
     """
+    if seed is not None:
+        torch.manual_seed(seed)
+
     string_size = 3
     program_size = 2
     model = RobustFill(
@@ -357,10 +360,15 @@ def sample_full(
     )
 
 
-def full_config(rank: Optional[int] = None) -> Config:
+def full_config(
+        rank: Optional[int] = None,
+        seed: Optional[int] = None) -> Config:
     """
     Return config for full model on programs and example input-output data.
     """
+    if seed is not None:
+        torch.manual_seed(seed)
+
     tokenizer = Tokenizer.create()
 
     program_size = len(tokenizer.op_token_table)
@@ -450,14 +458,16 @@ def ddp_run(rank: int, world_size: int) -> None:
     :param world_size: Number of processes i.e. number of GPUs.
     """
     ddp_setup(rank, world_size)
-    config = full_config(rank=rank)
+    config = full_config(rank=rank, seed=1337)
     trainer = Trainer(config)
     loaded = trainer.load_checkpoint_if_exists()
-    if not loaded:
-        # Make training deterministic if we are starting
-        # from a blank state.
+    if loaded:
         # If we are resuming, we don't want to repeat the same
-        # training data, so we leave the seed unset in that case.
+        # training data, so we reset the seed.
+        torch.manual_seed(random.randint(0, 2**32 - 1))
+    else:
+        # Seed based on rank so that each process has different
+        # training data.
         torch.manual_seed(420 + rank)
     trainer.train()
 
@@ -476,9 +486,6 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Set seed for reproducibility.
-    torch.manual_seed(1337)
-
     if args.mode == 'full':
         world_count = torch.cuda.device_count()
         if world_count > 1:
@@ -489,16 +496,16 @@ def main() -> None:
                 args=(world_count,),
                 nprocs=world_count)
             return
-        config = full_config()
+        config = full_config(seed=1337)
         trainer = Trainer(config)
         loaded = trainer.load_checkpoint_if_exists()
         if loaded:
             # If we are resuming, we don't want to repeat the same
             # training data.
-            torch.manual_seed(time.time())
+            torch.manual_seed(random.randint(0, 2**32 - 1))
         trainer.train()
     elif args.mode == 'easy':
-        config = easy_config()
+        config = easy_config(seed=1337)
         trainer = Trainer(config)
         trainer.train()
     else:
