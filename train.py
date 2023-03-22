@@ -2,6 +2,7 @@ import argparse
 from collections import namedtuple
 import os
 import pprint as pp
+import time
 from typing import Callable, List, NamedTuple, Optional, Tuple, Union
 
 import torch
@@ -111,7 +112,12 @@ class Trainer:
     def __init__(self, config: Config):
         self.config = config
 
-    def load_checkpoint_if_exists(self) -> None:
+    def load_checkpoint_if_exists(self) -> bool:
+        """
+        Load state from checkpoint file if it exists.
+
+        :returns: True if checkpoint was loaded, false otherwise.
+        """
         if (self.config.checkpoint_filename is not None
            and os.path.exists(self.config.checkpoint_filename)):
             print('Starting model from existing checkpoint file: '
@@ -119,6 +125,8 @@ class Trainer:
             loaded = torch.load(self.config.checkpoint_filename)
             self.config.model.load_state_dict(loaded[MODEL_STATE_DICT_KEY])
             self.config.optimizer.load_state_dict(loaded[OPT_STATE_DICT_KEY])
+            return True
+        return False
 
     @staticmethod
     def _max_program_length(expected_programs: List[List[int]]) -> int:
@@ -444,7 +452,13 @@ def ddp_run(rank: int, world_size: int) -> None:
     ddp_setup(rank, world_size)
     config = full_config(rank=rank)
     trainer = Trainer(config)
-    trainer.load_checkpoint_if_exists()
+    loaded = trainer.load_checkpoint_if_exists()
+    if not loaded:
+        # Make training deterministic if we are starting
+        # from a blank state.
+        # If we are resuming, we don't want to repeat the same
+        # training data, so we leave the seed unset in that case.
+        torch.manual_seed(420 + rank)
     trainer.train()
 
 
@@ -462,6 +476,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    # Set seed for reproducibility.
     torch.manual_seed(1337)
 
     if args.mode == 'full':
@@ -476,7 +491,11 @@ def main() -> None:
             return
         config = full_config()
         trainer = Trainer(config)
-        trainer.load_checkpoint_if_exists()
+        loaded = trainer.load_checkpoint_if_exists()
+        if loaded:
+            # If we are resuming, we don't want to repeat the same
+            # training data.
+            torch.manual_seed(time.time())
         trainer.train()
     elif args.mode == 'easy':
         config = easy_config()
