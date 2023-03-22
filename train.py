@@ -25,6 +25,12 @@ OOM_RETRIES = 2
 # Padding index used for uneven target program lengths.
 PADDING_INDEX = -1
 
+# Keys in dict saved to checkpoint file.
+# Key for model state.
+MODEL_STATE_DICT_KEY = 'model_state_dict'
+# Key for optimizer state.
+OPT_STATE_DICT_KEY = 'optimizer_state_dict'
+
 
 # Container for training data.
 # (Before and after tokenization)
@@ -110,8 +116,9 @@ class Trainer:
            and os.path.exists(self.config.checkpoint_filename)):
             print('Starting model from existing checkpoint file: '
                   f'{self.config.checkpoint_filename}')
-            self.config.model.load_state_dict(
-                torch.load(self.config.checkpoint_filename))
+            loaded = torch.load(self.config.checkpoint_filename)
+            self.config.model.load_state_dict(loaded[MODEL_STATE_DICT_KEY])
+            self.config.optimizer.load_state_dict(loaded[OPT_STATE_DICT_KEY])
 
     @staticmethod
     def _max_program_length(expected_programs: List[List[int]]) -> int:
@@ -189,9 +196,10 @@ class Trainer:
         if self.config.checkpoint_filename is not None:
             print('Saving to file {}'.format(
                 self.config.checkpoint_filename))
-            torch.save(
-                self.config.model.state_dict(),
-                self.config.checkpoint_filename)
+            torch.save({
+                MODEL_STATE_DICT_KEY: self.config.model.state_dict(),
+                OPT_STATE_DICT_KEY: self.config.optimizer.state_dict(),
+            }, self.config.checkpoint_filename)
 
         print('Done')
 
