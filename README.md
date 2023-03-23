@@ -2,11 +2,6 @@
 
 Original Paper: https://arxiv.org/pdf/1703.07469.pdf
 
-## TODO
-
-- GPU
-- Beam search
-
 ## Instructions
 
 Set up environment:
@@ -20,13 +15,19 @@ pip install -r requirements.txt
 Train neural net:
 
 ```
-python train.py
+python train.py --mode full
 ```
 
 For testing purposes:
 
 ```
-python train.py --dry
+python train.py --mode easy
+```
+
+Run profiler:
+
+```
+python train.py --mode profile
 ```
 
 Run unit tests:
