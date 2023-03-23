@@ -17,7 +17,7 @@ Given these pairs:
 The RobustFill network will generate a program that can be used to transform an unbounded number of unseen inputs:
 
 
-| Input             | Output                                    |
+| Unseen input      | Transformed Output                        |
 | ----------------- | ----------------------------------------- |
 | Elon Musk         | <font color="green">Musk, E.</font>       |
 | Joe Rogan         | <font color="green">Rogan, J.</font>      |
@@ -49,13 +49,13 @@ source env/bin/activate
 pip install -r requirements.txt
 ```
 
-Train neural net:
+Train neural net. The script will automatically use GPU(s) if they are available.
 
 ```
 python train.py --mode full
 ```
 
-For testing purposes:
+For testing purposes, run smaller network (on CPU) with a smaller problem size just to see that the loss goes to 0.
 
 ```
 python train.py --mode easy
