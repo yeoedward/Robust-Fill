@@ -35,7 +35,7 @@ Concat(
 )
 ```
 
-See the demo notebook to reproduce the result: [Demo Notebook](demo.ipnyb)
+See the demo notebook to reproduce the result: [Demo Notebook](demo.ipynb)
 
 The network was trained on Google Cloud with 4 x NVIDIA Tesla P4 using PyTorch's `Distributed Data Parallel`.
 
